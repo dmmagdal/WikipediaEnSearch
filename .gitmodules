@@ -1,0 +1,3 @@
+[submodule "WikipediaEnDownload"]
+	path = WikipediaEnDownload
+	url = https://github.com/dmmagdal/WikipediaEnDownload
