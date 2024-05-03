@@ -10,8 +10,9 @@ import copy
 import os
 import json
 import string
+import time
 from bs4 import BeautifulSoup
-from search import Search
+from search import ReRankSearch, TF_IDF, BM25, VectorSearch
 
 
 def main():

@@ -32,20 +32,19 @@ Description: Provides a text based search for Wikipedia (English only)
          - 19+ GB disk space compressed
          - 86+ GB disk space decompressed
          - Expect to use at least 64+ GB of RAM for the decompression OR 8+ GB if using `--shard`
-     - pages-meta-current.xml.bz2
-         - XX+ GB disk space compressed
-         - XX+ GB disk space decompressed
-         - Expect to use at least XX+ GB of RAM for the decompression OR 8+ GB if using `--shard`
  - Preprocessing consists of the following:
      - Breaking each document (xml file/article) into a bag of words.
          - The bag of words is stored into a JSON dictionary.
          - For each word in the bag of words, extract the word count. This will make for faster compute by front loading that operation here. The word count is also stored in the bag of words JSON dictionary.
+     - Chunking each document (xml file/article) into vector embeddings.
+         - The vector embeddings are stored into a faiss vector index.
+         - For each embedding, a mapping of the vectorDB, vectorDB index, file path, and slice indices are stored in a JSON dictionary.
  - Parsing documents
      - Read in the file and pass it to BeautifulSoup.
      - Extract only the `<title>` and `<text>` tags. Get the text for both tags and concatenate them together.
          - Ignore other tags (including `<links>`) as they don't have relevant information for the article.
      - For TF-IDF/BM25 search:
-         - Split and/or replace all punctuation with "" (empty string).
+         - Split and/or replace all punctuation with "" (empty string) or " " (whitespace).
          - Tokenize all words (with nltk word_tokenize OR splitting on " " whitespace).
          - Lowercase all words.
          - Convert the list of all words into a set (bag of words).
@@ -72,8 +71,24 @@ Description: Provides a text based search for Wikipedia (English only)
          - Models to be considered:
              - BERT
  - Nltk
-    - Downloading all nltk packages (stored in `~/nltk_data`) results in 3.3 GB in storage.
+     - Downloading all nltk packages (stored in `~/nltk_data`) results in 3.3 GB in storage.
+ - Optimizations to consider for further development
+     - In general
+         - Parralellizing workflows (especially in preprocessing) to leverage multiprocessing/threading.
+         - The embedding models are neural networks and thus would benefit from leveraging on device GPUs.
+     - In preprocessing
+         - Opting for utilizing a second machine or SQL database to load in article data/text from memory/RAM instead of using file IO to read xml files.
+     - In search
+         - Opting for utilizing a second machine to load in and query indices from memory/RAM instead of using file IO to read the index files.
 
+
+### Useful Links
+
+ - Stop words
+     - [pythonspot blog](https://pythonspot.com/nltk-stop-words/)
+     - [geeksforgeeks](https://www.geeksforgeeks.org/removing-stop-words-nltk-python/)
+ - Num2words
+     - []
 
 ### References
 
@@ -87,5 +102,6 @@ Description: Provides a text based search for Wikipedia (English only)
  - Documentation of native python module used:
      - [copy](https://docs.python.org/3.9/library/copy.html)
      - [json](https://docs.python.org/3.9/library/json.html)
+     - [math](https://docs.python.org/3.9/library/math.html)
      - [os](https://docs.python.org/3.9/library/os.html)
      - [string](https://docs.python.org/3.9/library/string.html)
