@@ -12,7 +12,37 @@ import string
 from bs4 import BeautifulSoup
 import nltk
 from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
+import num2words
+import numpy as np
+
+
+def bow_preprocessing(text, return_word_freq=False):
+	'''
+	@param: text (str), the raw text that is to be processed into a bag
+		of words.
+	@param: return_word_freq (bool), whether to return the frequency of
+		each word in the input text.
+	@return: returns a tuple (bow: str) or 
+		(bow: str, freq: dict[str: int]) depending on the 
+		return_word_freq argument.
+	'''
+	return
+
+
+def vector_preprocessing(article_text, context_length, tokenizer):
+	'''
+	@param: text (str), the raw text that is to be processed into a bag
+		of words.
+	@param: context_length (int), the maximum number of tokens that
+	 	will be accepted by the embedding model.
+	@param: tokenizer (AutoTokenizer), the tokenizer for the embedding
+		model.
+	@return: returns a List[str] of the text sliced into chunks that
+		are acceptable size to the embedding model.
+	'''
+	return
 
 
 def main():
@@ -99,6 +129,12 @@ def main():
 			if word not in stop_words and len(word) > 1:
 				new_text = new_text + " " + word
 		article_text_bow = new_text
+		# article_text_bow = " ".join(
+		# 	[
+		# 		word for word in words 
+		# 		if word not in stop_words and len(word) > 1
+		# 	]
+		# )
 
 		# NOTE:
 		# In the following example
@@ -114,9 +150,29 @@ def main():
 		# every extra python package I use in this implementation, I
 		# will need to find its counterpart in JS for that
 		# implementation.
+		tokens = word_tokenize(article_text_bow)
+		new_text = ""
+		for w in tokens:
+			try:
+				w =num2words(int(w))
+			except:
+				a = 0
+			new_text = new_text + " " + w
+		new_text = np.char.replace(new_text, "-", " ")
+		article_text_bow = new_text
 
 		# Lemmatize then stem the words.
-
+		lemmatizer = WordNetLemmatizer()
+		tokens = word_tokenize(article_text_bow)
+		article_text_bow = " ".join(
+			[lemmatizer.lemmatize(word) for word in tokens]
+		)
+		
+		stemmer = PorterStemmer()
+		tokens = word_tokenize(article_text_bow)
+		article_text_bow = " ".join(
+			[stemmer.stem(word) for word in tokens]
+		)
 
 		# For each word, get the frequency of the word.
 		xml_bow = set(article_text_bow.split(" "))
@@ -130,14 +186,6 @@ def main():
 
 	# Exit the program.
 	exit(0)
-
-
-def bow_preprocessing(article_text):
-	return
-
-
-def vector_preprocessing(article_text):
-	return
 
 
 if __name__ == '__main__':

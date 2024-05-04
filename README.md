@@ -82,13 +82,28 @@ Description: Provides a text based search for Wikipedia (English only)
          - Opting for utilizing a second machine to load in and query indices from memory/RAM instead of using file IO to read the index files.
 
 
-### Useful Links
+### Useful Links for Preprocessing Concepts
 
  - Stop words
      - [pythonspot blog](https://pythonspot.com/nltk-stop-words/)
      - [geeksforgeeks](https://www.geeksforgeeks.org/removing-stop-words-nltk-python/)
  - Num2words
-     - []
+     - [pypi](https://pypi.org/project/num2words/)
+
+
+### Python Module to JS Package
+
+ - nltk
+     - functions: stop words, lemmatization, stemming, and word tokenizing.
+     - natural
+     - winkjs
+         - main [webpage](https://winkjs.org/packages.html)
+ - num2word
+     - functions: convert numbers from their numerical representation to a written form.
+     - to-words
+ - beautifulsoup
+     - functions: parse xml data.
+
 
 ### References
 
