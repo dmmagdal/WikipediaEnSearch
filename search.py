@@ -7,8 +7,13 @@
 import os
 import json
 from bs4 import BeautifulSoup
+import faiss
 from transformers import AutoTokenizer
 from preprocess import bow_preprocessing
+
+
+def load_article_file(path: str):
+	pass
 
 
 class ReRankSearch:
@@ -56,43 +61,41 @@ class ReRankSearch:
 
 
 class BM25:
-	def __init__(self):
+	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
 		pass
 
 
 	def search(self, query, max_results=50):
 		'''
-			Conducts a search on the wikipedia data with BM25.
-			@param: query str, the raw text that is being queried from 
-				the wikipedia data.
-			@param: max_results (int), the maximum number of search
-				results to return.
-			@return: returns a list of objects where each object 
-				contains an article's path, title, retrieved text, and
-				the slices of that text that is being returned (for 
-				BM25 and TF-IDF, those slices values are for the whole
-				article).
+		Conducts a search on the wikipedia data with BM25.
+		@param: query str, the raw text that is being queried from the
+			wikipedia data.
+		@param: max_results (int), the maximum number of search results
+			to return.
+		@return: returns a list of objects where each object contains
+			an article's path, title, retrieved text, and the slices of
+			that text that is being returned (for BM25 and TF-IDF, 
+			those slices values are for the whole article).
 		'''
 		pass
 
 
 class TF_IDF:
-	def __init__(self):
+	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
 		pass
 
 
 	def search(self, query, max_results=50):
 		'''
-			Conducts a search on the wikipedia data with TF-IDF.
-			@param: query str, the raw text that is being queried from 
-				the wikipedia data.
-			@param: max_results (int), the maximum number of search
-				results to return.
-			@return: returns a list of objects where each object 
-				contains an article's path, title, retrieved text, and
-				the slices of that text that is being returned (for 
-				BM25 and TF-IDF, those slices values are for the whole
-				article).
+		Conducts a search on the wikipedia data with TF-IDF.
+		@param: query str, the raw text that is being queried from the
+			wikipedia data.
+		@param: max_results (int), the maximum number of search results
+			to return.
+		@return: returns a list of objects where each object contains
+			an article's path, title, retrieved text, and the slices of
+			that text that is being returned (for BM25 and TF-IDF, 
+			those slices values are for the whole article).
 		'''
 		pass
 
@@ -140,19 +143,18 @@ class VectorSearch:
 
 	def search(self, query, max_results=50, document_ids=[]):
 		'''
-			Conducts a search on the wikipedia data with vector search.
-			@param: query str, the raw text that is being queried from 
-				the wikipedia data.
-			@param: max_results (int), the maximum number of search
-				results to return.
-			@param: document_ids (List[str]), the list of all document 
-				(paths) that are to be queried from the vector 
-				database/indices.
-			@return: returns a list of objects where each object 
-				contains an article's path, title, retrieved text, and
-				the slices of that text that is being returned (for 
-				BM25 and TF-IDF, those slices values are for the whole
-				article).
+		Conducts a search on the wikipedia data with vector search.
+		@param: query str, the raw text that is being queried from the
+			wikipedia data.
+		@param: max_results (int), the maximum number of search results
+			to return.
+		@param: document_ids (List[str]), the list of all document 
+			(paths) that are to be queried from the vector 
+			database/indices.
+		@return: returns a list of objects where each object contains
+			an article's path, title, retrieved text, and the slices of
+			that text that is being returned (for BM25 and TF-IDF, 
+			those slices values are for the whole article).
 		'''
 
 		# Perform a global search if document_ids is an empty list. 

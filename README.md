@@ -31,7 +31,7 @@ Description: Provides a text based search for Wikipedia (English only)
      - pages-articles-multistream.xml.bz2
          - 19+ GB disk space compressed
          - 86+ GB disk space decompressed
-         - Expect to use at least 64+ GB of RAM for the decompression OR 8+ GB if using `--shard`
+         - Expect to use at least 64+ GB of RAM for the decompression OR 8+ GB if using `--shard` when downloading the data.
  - Preprocessing consists of the following:
      - Breaking each document (xml file/article) into a bag of words.
          - The bag of words is stored into a JSON dictionary.
@@ -39,39 +39,18 @@ Description: Provides a text based search for Wikipedia (English only)
      - Chunking each document (xml file/article) into vector embeddings.
          - The vector embeddings are stored into a faiss vector index.
          - For each embedding, a mapping of the vectorDB, vectorDB index, file path, and slice indices are stored in a JSON dictionary.
- - Parsing documents
-     - Read in the file and pass it to BeautifulSoup.
-     - Extract only the `<title>` and `<text>` tags. Get the text for both tags and concatenate them together.
-         - Ignore other tags (including `<links>`) as they don't have relevant information for the article.
-     - For TF-IDF/BM25 search:
-         - Split and/or replace all punctuation with "" (empty string) or " " (whitespace).
-         - Tokenize all words (with nltk word_tokenize OR splitting on " " whitespace).
-         - Lowercase all words.
-         - Convert the list of all words into a set (bag of words).
-         - Count the frequency of each word in the bag of words in the word list.
-         - Store the word set (bag of words) and the count in a dictionary.
-         - Store the dictionary in JSON.
-     - For Vector search with language model:
-         - Split the text on "\n" (newline) characters.
-         - Embed the texts with the language model, maximizing the number of tokens that can fit within the model's context window. You will want to merge texts together (include the "\n" newline character you removed when you do).
-         - Store the embedding to the vector database. Keep track of the index of that embedding as well as the text and article that it came from.
-             - Store this metadata (database index, article file, text slice indices) in a JSON dictionary.
- - Parsing queries
-     - Repeat the same steps from document parsing.
- - Search Methods
-     - TF-IDF/BM25
-         - Requires no additional modules but would benefit from having numpy installed for faster computation (minimal package bloat).
-         - Is a more classical method for search.
-         - Should at least give you the top article(s) to consider for each query/search.
-     - Vector search with language model
-         - Requires pytorch, transformers, and faiss libraries (meaning the package bloat will be heavier).
-         - Is a more abstract and deep learning method of search.
-         - Should give you the top passages of text to consider for each query/search.
-         - Uses language models to turn articles and search queries into embeddings and performms k nearest neighbors (knn) to get the embeddings that are most semantically similar.
-         - Models to be considered:
-             - BERT
  - Nltk
      - Downloading all nltk packages (stored in `~/nltk_data`) results in 3.3 GB in storage.
+     - NLTK uses WordNet Lemmatizer by default.
+     - See the geeksforgeeks article on using NLTK's lemmatizer for the pros and cons of using this specific lemmatizer.
+         - Advantages
+             - Improves text analysis accuracy: Lemmatization helps in improving the accuracy of text analysis by reducing words to their base or dictionary form. This makes it easier to identify and analyze words that have similar meanings.
+             - Reduces data size: Since lemmatization reduces words to their base form, it helps in reducing the data size of the text, which makes it easier to handle large datasets.
+             - Better search results: Lemmatization helps in retrieving better search results since it reduces different forms of a word to a common base form, making it easier to match different forms of a word in the text.
+         - Disadvantages
+             - Time-consuming: Lemmatization can be time-consuming since it involves parsing the text and performing a lookup in a dictionary or a database of word forms.
+             - Not suitable for real-time applications: Since lemmatization is time-consuming, it may not be suitable for real-time applications that require quick response times.
+             - May lead to ambiguity: Lemmatization may lead to ambiguity, as a single word may have multiple meanings depending on the context in which it is used. In such cases, the lemmatizer may not be able to determine the correct meaning of the word.
  - Optimizations to consider for further development
      - In general
          - Parralellizing workflows (especially in preprocessing) to leverage multiprocessing/threading.
@@ -82,6 +61,68 @@ Description: Provides a text based search for Wikipedia (English only)
          - Opting for utilizing a second machine to load in and query indices from memory/RAM instead of using file IO to read the index files.
 
 
+### Parsing Documents & Queries
+
+ - Read in the file and pass it to BeautifulSoup.
+ - Extract only the `<title>` and `<text>` tags. Get the text for both tags and concatenate them together.
+     - Ignore other tags (including `<links>`) as they don't have relevant information for the article.
+ - For TF-IDF/BM25 search:
+     - Preprocessing:
+         - Lowercase all words.
+         - Split and/or replace all punctuation with "" (empty string) or " " (whitespace).
+         - Tokenize all words (with nltk word_tokenize OR splitting on " " whitespace).
+         - Convert all numbers from digits to their written expanded form (1 -> 'one').
+         - Lemmatize and stem all remainging words.
+     - Convert the list of all words into a set (bag of words).
+     - Document to words mapping:
+         - Each document is going to contain its own list of the set of unique words (bag of words).
+         - For each word in the document's bag of words, the word frequency will be kept track of.
+         - 
+```
+document_path: {
+    word_1: word_1_freq,
+    word_2: word_2_freq,
+    . . .
+    word_n: word_n_freq,
+}
+```
+     - Word to documents mapping:
+         - Each word is going to maintain a list of the documents that it has occured in.
+         - 
+```
+word: [document_1_path, document_2_path, ... , document_n_path]
+```
+     - Store the above metadata into dictionaries and save them to JSON files.
+ - For Vector search with language model:
+     - Preprocessing"
+         - Split the text on "\n" (newline) characters.
+     - Embed the texts with the language model, maximizing the number of tokens that can fit within the model's context window. You will want to merge texts together (include the "\n" newline character you removed when you do).
+     - Store the embedding to the vector database. Keep track of the index of that embedding as well as the text and article that it came from.
+         - Store this metadata (database index, article file, text slice indices) in a JSON dictionary.
+         - 
+```
+[database_path, database_index, article_path, [text_slice_start_index, text_slice_end_index]]
+```
+ - Repeat the same steps from document parsing to parse search queries.
+
+
+### Search Methods
+
+ - TF-IDF/BM25
+     - Requires no additional modules but would benefit from having numpy installed for faster computation (minimal package bloat).
+     - Is a more classical method for search.
+     - Should at least give you the top article(s) to consider for each query/search.
+ - Vector search with language model
+     - Requires pytorch, transformers, and faiss libraries (meaning the package bloat will be heavier).
+     - Is a more abstract and deep learning method of search.
+     - Should give you the top passages of text to consider for each query/search.
+     - Uses language models to turn articles and search queries into embeddings and performms k nearest neighbors (knn) to get the embeddings that are most semantically similar.
+     - Models to be considered:
+         - BERT
+ - Rerank search with TF-IDF/BM25 and vector search
+     - Combination of methods above.
+
+
 ### Useful Links for Preprocessing Concepts
 
  - Stop words
@@ -89,6 +130,13 @@ Description: Provides a text based search for Wikipedia (English only)
      - [geeksforgeeks](https://www.geeksforgeeks.org/removing-stop-words-nltk-python/)
  - Num2words
      - [pypi](https://pypi.org/project/num2words/)
+ - Lemmatization
+     - [geeksforgeeks](https://www.geeksforgeeks.org/python-lemmatization-with-nltk/)
+ - Stemming
+     - [geeksforgeeks](https://www.geeksforgeeks.org/python-stemming-words-with-nltk/)
+     - [guru99 post](https://www.guru99.com/stemming-lemmatization-python-nltk.html) (applies also to lemmatization)
+ - Previous search examples
+     - neuralsearch [repo](https://github.com/dmmagdal/NeuralSearch) (mine)
 
 
 ### Python Module to JS Package
@@ -96,18 +144,29 @@ Description: Provides a text based search for Wikipedia (English only)
  - nltk
      - functions: stop words, lemmatization, stemming, and word tokenizing.
      - natural
+         - [npm]()
+         - main [webpage]()
      - winkjs
+         - [npm]()
          - main [webpage](https://winkjs.org/packages.html)
  - num2word
      - functions: convert numbers from their numerical representation to a written form.
      - to-words
+         - [npm]()
  - beautifulsoup
      - functions: parse xml data.
+ - faiss 
+     - functions: store/retrieve and save/load vector embeddings.
+ - transformers
+     - functions: use pretrained language models to create vector embeddings from texts.
+     - transformers.js
+         - [npm]()
 
 
 ### References
 
  - BeautifulSoup [documentation](https://beautiful-soup-4.readthedocs.io/en/latest/)
+ - Faiss [documentation]()
  - NLTK [documentation](https://www.nltk.org/)
      - [corpus](https://www.nltk.org/api/nltk.corpus.html)
      - [download](https://www.nltk.org/api/nltk.downloader.html)
@@ -115,7 +174,9 @@ Description: Provides a text based search for Wikipedia (English only)
      - [tokenizer](https://www.nltk.org/api/nltk.tokenize.html)
      - [word_tokenize](https://www.nltk.org/api/nltk.tokenize.word_tokenize.html)
  - Documentation of native python module used:
+     - [argparse](https://docs.python.org/3.9/library/argparse.html)
      - [copy](https://docs.python.org/3.9/library/copy.html)
+     - [gc](https://docs.python.org/3.9/library/gc.html)
      - [json](https://docs.python.org/3.9/library/json.html)
      - [math](https://docs.python.org/3.9/library/math.html)
      - [os](https://docs.python.org/3.9/library/os.html)

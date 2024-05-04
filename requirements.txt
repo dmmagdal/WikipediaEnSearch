@@ -1,5 +1,7 @@
 beautifulsoup4==4.12.1
+faiss-cpu==1.7.3
 lxml==4.9.1
 nltk==3.8
+num2words==0.5.12
 transformers==4.31.0
 torch==2.1.0

@@ -1,4 +1,8 @@
 {
-    "model": "bert-base-uncased",
-    "sparse-retrieval-threshold": -1
+    "sparse-retrieval-threshold": -1.0,
+    "bm25_config": {},
+    "tf-idf_config": {},
+    "vector-search_config": {
+        "model": "bert-base-uncased"
+    }
 }
