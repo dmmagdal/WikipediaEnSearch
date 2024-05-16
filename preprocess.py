@@ -333,6 +333,8 @@ def main() -> None:
 		xml_chunks = vector_preprocessing(article_text_v_db)
 
 		# Embed chunks and write them to vector storage.
+		for chunk in xml_chunks:
+			pass
 
 
 		# Perform garbage collection.

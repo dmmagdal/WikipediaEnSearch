@@ -59,6 +59,7 @@ Description: Provides a text based search for Wikipedia (English only)
          - Opting for utilizing a second machine or SQL database to load in article data/text from memory/RAM instead of using file IO to read xml files.
      - In search
          - Opting for utilizing a second machine to load in and query indices from memory/RAM instead of using file IO to read the index files.
+ - Got ascii art from [here](https://patorjk.com/software/taag/#p=display&f=Sub-Zero&t=Wikipedia%20%0ASearch)
 
 
 ### Parsing Documents & Queries
@@ -119,6 +120,13 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Uses language models to turn articles and search queries into embeddings and performms k nearest neighbors (knn) to get the embeddings that are most semantically similar.
      - Models to be considered:
          - BERT
+             - bert-base-cased
+             - mobilebert
+         - All MiniLM ([sentence-transformers](https://huggingface.co/sentence-transformers))
+             - sentence-transformers/all-MiniLM-L6-v2
+             - sentence-transformers/all-MiniLM-L6-v1
+             - sentence-transformers/all-MiniLM-L12-v2
+             - sentence-transformers/all-MiniLM-L12-v1
  - Rerank search with TF-IDF/BM25 and vector search
      - Combination of methods above.
 
@@ -144,35 +152,68 @@ word: [document_1_path, document_2_path, ... , document_n_path]
  - nltk
      - functions: stop words, lemmatization, stemming, and word tokenizing.
      - natural
-         - [npm]()
-         - main [webpage]()
+         - [npm](https://www.npmjs.com/package/natural/v/1.0.1)
+         - main [webpage](https://naturalnode.github.io/natural/)
      - winkjs
-         - [npm]()
+         - wink-nlp [npm](https://www.npmjs.com/package/wink-nlp)
+         - wink-porter2-stemmer [npm](https://www.npmjs.com/package/wink-porter2-stemmer)
+         - wink-nlp-utils [npm](https://www.npmjs.com/package/wink-nlp-utils)
+         - wink-nlp-lemmatizer [npm](https://www.npmjs.com/package/wink-lemmatizer)
          - main [webpage](https://winkjs.org/packages.html)
+         - examples [page](https://winkjs.org/examples.html)
+         - stemming and lemmatization [tutorial](https://observablehq.com/@winkjs/how-to-do-stemming-and-lemmatization)
+         - wink-nlp main [webpage](https://winkjs.org/wink-nlp/)
+         - wink-nlp-utils main [webpage](https://winkjs.org/wink-nlp-utils/)
  - num2word
      - functions: convert numbers from their numerical representation to a written form.
      - to-words
-         - [npm]()
+         - [npm](https://www.npmjs.com/package/to-words)
  - beautifulsoup
      - functions: parse xml data.
+     - some alternatives (curtesy of [stack overflow](https://stackoverflow.com/questions/14890655/the-best-node-module-for-xml-parsing))
+     - libxmljs
+         - [npm](https://www.npmjs.com/package/libxmljs)
+         - [github](https://github.com/libxmljs/libxmljs)
+     - xml-stream
+         - [npm](https://www.npmjs.com/package/xml-stream)
+         - [github](https://github.com/assistunion/xml-stream)
+     - xmldoc
+         - [npm](https://www.npmjs.com/package/xmldoc)
+         - [github](https://github.com/nfarina/xmldoc)
  - faiss 
      - functions: store/retrieve and save/load vector embeddings.
+     - faiss-node
+         - [npm](https://www.npmjs.com/package/faiss-node)
+ - chromadb
+     - functions: store/retrieve and save/load vector embeddings
+     - chromadb
+         - [npm](https://www.npmjs.com/package/chromadb)
  - transformers
      - functions: use pretrained language models to create vector embeddings from texts.
      - transformers.js
-         - [npm]()
+         - [npm](https://www.npmjs.com/package/@xenova/transformers)
 
 
 ### References
 
  - BeautifulSoup [documentation](https://beautiful-soup-4.readthedocs.io/en/latest/)
- - Faiss [documentation]()
+ - Faiss [documentation](https://faiss.ai/index.html)
+     - [wiki](https://github.com/facebookresearch/faiss/wiki)
  - NLTK [documentation](https://www.nltk.org/)
      - [corpus](https://www.nltk.org/api/nltk.corpus.html)
      - [download](https://www.nltk.org/api/nltk.downloader.html)
      - [stopwords](https://www.nltk.org/search.html?q=stopwords)
      - [tokenizer](https://www.nltk.org/api/nltk.tokenize.html)
      - [word_tokenize](https://www.nltk.org/api/nltk.tokenize.word_tokenize.html)
+     - [wordnet lemmatizer](https://www.nltk.org/api/nltk.stem.wordnet.html)
+     - [porter stemmer](https://www.nltk.org/howto/stem.html)
+ - Transformers
+     - getting started with embeddings [blog post](https://huggingface.co/blog/getting-started-with-embeddings)
+     - using sentencetransformers at huggingface [documentation](https://huggingface.co/docs/hub/en/sentence-transformers)
+ - Sentence Transformers
+     - sentence transformers in the huggingface hub [blog post](https://huggingface.co/blog/sentence-transformers-in-the-hub)
+     - [documentation](https://www.sbert.net/)
+     - [github](https://github.com/UKPLab/sentence-transformers)
  - Documentation of native python module used:
      - [argparse](https://docs.python.org/3.9/library/argparse.html)
      - [copy](https://docs.python.org/3.9/library/copy.html)

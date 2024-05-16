@@ -48,7 +48,13 @@ def search_loop() -> None:
 	@return: returns nothing.
 	'''
 
+	# Read in the title text (ascii art).
+	with open("title.txt", "r") as f:
+		title = f.read()
+
 	exit_phrase = "Exit Search"
+	print(title)
+	print()
 	search_query = input("> ")
 	pass
 
