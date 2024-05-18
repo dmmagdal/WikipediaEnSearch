@@ -6,6 +6,7 @@
 
 import os
 import json
+import math
 from bs4 import BeautifulSoup
 import faiss
 from transformers import AutoTokenizer
@@ -82,10 +83,14 @@ class BM25:
 
 class TF_IDF:
 	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
+
+		# Load 
+		self.words_to_docs = []
+		self.docs_to_words = []
 		pass
 
 
-	def search(self, query, max_results=50):
+	def search(self, query:str, max_results:int = 50):
 		'''
 		Conducts a search on the wikipedia data with TF-IDF.
 		@param: query str, the raw text that is being queried from the
@@ -97,7 +102,61 @@ class TF_IDF:
 			that text that is being returned (for BM25 and TF-IDF, 
 			those slices values are for the whole article).
 		'''
-		pass
+
+		# Assertion for max_results argument (must be non-zero int).
+		assert isinstance(max_results, int) and str(max_results).isdigit() and max_results > 0, f"max_results argument is expected to be some int value greater than zero. Recieved {max_results}"
+
+		# Preprocess the search query to a bag of words.
+		words = bow_preprocessing(query)
+
+		# Isolate the list of documents and the total number of 
+		# documents.
+		docs = list(self.docs_to_words)
+		num_docs = len(docs)
+
+		# Initialize the mapping from documents to their TF-IDF values.
+		docs_to_tfidf = dict()
+
+		# Iterate throuch each document, computing the TF-IDF for each.
+		for doc in docs:
+			# Initialize the vector sum for all words in the search.
+			vector_sum = 0.0
+
+			# Iterate through every word in the search query.
+			for word in words:
+				# Compute text frequency.
+				word_freq_in_doc = self.docs_to_words[doc][word]
+				total_word_in_doc = sum(
+					self.docs_to_words[doc].values()
+				)	# total words in document = sum of all word frequencies in the document
+				text_freq = word_freq_in_doc / total_word_in_doc
+
+				# Compute inverse document frequency.
+				num_docs_with_word = len(self.words_to_docs[word])
+				inverse_doc_freq = math.log(
+					num_docs / num_docs_with_word
+				)
+
+				# Put together TF-IDF.
+				tf_idf = text_freq * inverse_doc_freq
+				vector_sum += tf_idf
+
+			# Map the total word vector sum to the document.
+			docs_to_tfidf[doc] = vector_sum
+
+		# Convert the dictionary to a sorted list (sorted from largest
+		# to smallest TF-IDF vector sum).
+		sorted_list = sorted(
+			docs_to_tfidf.items(), 
+			key=lambda item: item[1], 
+			reverse=True
+		)
+
+		# Trim the list by the max_results value.
+		sorted_list = sorted_list[:max_results]
+
+		# Return the list.
+		return sorted_list
 
 
 class VectorSearch:
