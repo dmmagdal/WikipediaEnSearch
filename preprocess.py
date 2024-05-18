@@ -11,7 +11,9 @@ import copy
 import json
 # import math
 import string
+import sys
 from bs4 import BeautifulSoup
+from bs4.element import Tag, NavigableString
 import faiss
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
@@ -20,6 +22,36 @@ import num2words
 # import numpy as np
 # from tqdm import tqdm
 from transformers import AutoTokenizer
+
+
+def process_page(page: Tag | NavigableString) -> str:
+	'''
+	Format and merge the texts from the <title> and <text> tags in the
+		current <page> tag.
+	@param: page (Tag | NavigatableString), the <page> element that is
+		going to be parsed.
+	@return: returns the text from the <title> and <text> tags merged
+		together.
+	'''
+
+	# Assert correct typing for the page.
+	assert isinstance(page, Tag) or isinstance(page, NavigableString) or page is None,\
+		"Expected page to be a Tag or NavigatableString."
+
+	# Return empty string if page is none.
+	if page is None:
+		return ""
+
+	# Locate the title and text tags (expect to have 1 of each per 
+	# article/page).
+	title_tag = page.find("title")
+	text_tag = page.find("text")
+
+	# Combine the title and text tag texts together.
+	article_text = title_tag.get_text() + "\n\n" + text_tag.get_text()
+	
+	# Return the text.
+	return article_text
 
 
 def lowercase(text: str) -> str:
@@ -299,42 +331,67 @@ def main() -> None:
 		with open(file, "r") as f:
 			raw_text = f.read()
 
+		print(f"Processing file {file}...")
+
 		# Load the raw text into a beautifulsoup object and extract the
-		# <title> and <text> tags.
+		# <page> tags.
 		soup = BeautifulSoup(raw_text, "lxml")
-		title_tag = soup.find("title")
-		text_tag = soup.find("text")
+		pages = soup.find_all("page")
 
-		# Combine the title and text tag texts together.
-		article_text = title_tag.get_text() + "\n\n" + text_tag.get_text()
-		article_text_bow = copy.deepcopy(article_text)
-		article_text_v_db = copy.deepcopy(article_text)
+		# Iterate through each page in the file and preprocess them.
+		for page in pages:
+			# Isolate the article/page's SHA1.
+			sha1_tag = page.find("sha1")
 
-		###############################################################
-		# BAG OF WORDS
-		###############################################################
-		# Create a bag of words for each article (xml) file.
-		xml_bow, xml_word_freq = bow_preprocessing(article_text_bow)
+			if sha1_tag is None:
+				continue
 
-		# Update word to document map.
-		for word in xml_bow:
-			if word in list(word_to_doc.keys()):
-				word_to_doc[word].append(file)
-			else:
-				word_to_doc[word] = [file]
+			article_sha1 = sha1_tag.get_text()
 
-		# Update the document to words map.
-		doc_to_word[file] = xml_word_freq
+			# Isolate the article/page's raw text.
+			article_text = process_page(page)
+			article_text_bow = copy.deepcopy(article_text)
+			article_text_v_db = copy.deepcopy(article_text)
 
-		###############################################################
-		# VECTOR EMBEDDINGS
-		###############################################################
-		# Pass the article 
-		xml_chunks = vector_preprocessing(article_text_v_db)
+			###########################################################
+			# BAG OF WORDS
+			###########################################################
+			# Create a bag of words for each article (xml) file.
+			xml_bow, xml_word_freq = bow_preprocessing(
+				article_text_bow, return_word_freq=True
+			)
 
-		# Embed chunks and write them to vector storage.
-		for chunk in xml_chunks:
-			pass
+			# Update word to document map.
+			for word in xml_bow:
+				if word in list(word_to_doc.keys()):
+					word_to_doc[word].append(file)
+				else:
+					word_to_doc[word] = [file]
+
+			# Update the document to words map.
+			doc_to_word[file] = xml_word_freq
+
+			###########################################################
+			# VECTOR EMBEDDINGS
+			###########################################################
+			# Pass the article 
+			# xml_chunks = vector_preprocessing(article_text_v_db)
+
+			# Embed chunks and write them to vector storage.
+			# for chunk in xml_chunks:
+			# 	pass
+
+		# Compute size of mappings.
+		d2w_size = sys.getsizeof(doc_to_word)
+		w2d_size = sys.getsizeof(word_to_doc)
+
+		GB_SIZE = 1024 * 1024 * 1024
+		if d2w_size // GB_SIZE > 1:
+			print(f"Document to word map has reached over 1GB in size")
+			exit()
+		elif w2d_size // GB_SIZE > 1:
+			print(f"Word to document map has reached over 1GB in size")
+			exit()
 
 
 		# Perform garbage collection.
