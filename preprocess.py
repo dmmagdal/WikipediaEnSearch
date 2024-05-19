@@ -21,7 +21,7 @@ from nltk.tokenize import word_tokenize
 # import num2words
 from num2words import num2words
 # import numpy as np
-# from tqdm import tqdm
+from tqdm import tqdm
 from transformers import AutoTokenizer
 
 
@@ -62,6 +62,46 @@ def lowercase(text: str) -> str:
 	@return: returns the text with all characters in lowercase.
 	'''
 	return text.lower()
+
+
+def replace_superscripts(text: str) -> str:
+	'''
+	Replace all superscripts depending on the character.
+	@param: text (str), the text that is going to have its text 
+		removed/modified.
+	@return: returns the text with all superscript characters 
+		replaced with regular numbers.
+	'''
+	superscript_map = {
+		'⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', 
+		'⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9'
+	}
+	
+	# result = ""
+	# for char in text:
+	# 	if char in superscript_map:
+	# 		# result += '^' + superscript_map[char]
+	# 		result += superscript_map[char]
+	# 	else:
+	# 		result += char
+	# return result
+	result = []
+	i = 0
+	while i < len(text):
+		if text[i] in superscript_map:
+			# Start of a superscript sequence.
+			sequence = []
+			while i < len(text) and text[i] in superscript_map:
+				sequence.append(superscript_map[text[i]])
+				i += 1
+
+			# Join the sequence and prepend "^".
+			result.append('^' + ''.join(sequence) + " ")
+		else:
+			result.append(text[i])
+			i += 1
+
+	return ''.join(result)
 
 
 def remove_punctuation(text: str) -> str:
@@ -126,12 +166,25 @@ def convert_numbers(text: str) -> str:
 	# 	new_text = new_text + " " + w
 	# new_text = np.char.replace(new_text, "-", " ")
 	# text = new_text
-	text = " ".join(
-		[
-			num2words(int(word)) for word in words
-			if word.isdigit()
-		]
-	)
+	# text = " ".join(
+	# 	[
+	# 		num2words(int(word)) for word in words
+	# 		if word.isdigit()
+	# 	]
+	# )
+	text = ""
+	for word in words:
+		if word.isdigit():
+			if len(word) < 307:
+				word = num2words(int(word))
+			else:
+				# Handles the edge case where the numerical text is 
+				# greater than 1 x 10^307. Break apart the number and
+				# process each half before merging them together.
+				half_length = len(word) // 2
+				word = num2words(int(word[:half_length])) + " " + num2words(int(word[half_length:]))
+
+		text = text + " " + word
 
 	return text
 
@@ -183,14 +236,15 @@ def bow_preprocessing(text: str, return_word_freq: bool=False):
 	# 1) lowercase
 	# 2) remove punctuation
 	# 3) remove stop words
-	# 4) convert numbers
-	# 5) lemmatize
-	# 6) stem
-	# 7) remove punctuation
-	# 8) convert numbers
-	# 9) stem
-	# 10) remove punctuation
-	# 11) remove stopwords
+	# 4) remove superscripts
+	# 5) convert numbers
+	# 6) lemmatize
+	# 7) stem
+	# 8) remove punctuation
+	# 9) convert numbers
+	# 10) stem
+	# 11) remove punctuation
+	# 12) remove stopwords
 	# Note how some of these steps are repeated. This is because 
 	# previous steps may have introduced conditions that were 
 	# previously handled. However, this order of operations is both
@@ -198,6 +252,7 @@ def bow_preprocessing(text: str, return_word_freq: bool=False):
 	text = lowercase(text)
 	text = remove_punctuation(text)
 	text = remove_stopwords(text)
+	text = replace_superscripts(text)
 	text = convert_numbers(text)
 	text = lemmatize(text)
 	text = stem(text)
@@ -339,8 +394,26 @@ def main() -> None:
 		soup = BeautifulSoup(raw_text, "lxml")
 		pages = soup.find_all("page")
 
+		# NOTE:
+		# The tqdm package should come with one of the other packages
+		# required for this project. Specifically, it should come with
+		# either the pytorch or huggingface transformers packages. It
+		# is useful for tracking the number of articles/pages that have
+		# been processed in the file. Don't worry about bringing this
+		# over the JS implementation.
+
+		# TODO:
+		# Investigate using multiprocessing to speed up the process.
+		# There are hundreds of files to process and each one takes a
+		# significant amount of time to comb through and preprocess.
+		# The memory overhead is minimal, so single threaded/process
+		# approach is still fine for underpowered or consumer 
+		# computers. I just want the option for people who have more
+		# powerful hardware and want results quicker.
+
 		# Iterate through each page in the file and preprocess them.
-		for page in pages:
+		# for page in pages:
+		for page in tqdm(pages):
 			# Isolate the article/page's SHA1.
 			sha1_tag = page.find("sha1")
 
@@ -348,6 +421,7 @@ def main() -> None:
 				continue
 
 			article_sha1 = sha1_tag.get_text()
+			# print(f"\tArticle SHA1 {article_sha1}")
 
 			# Isolate the article/page's raw text.
 			article_text = process_page(page)
