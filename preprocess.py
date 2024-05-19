@@ -18,7 +18,8 @@ import faiss
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
-import num2words
+# import num2words
+from num2words import num2words
 # import numpy as np
 # from tqdm import tqdm
 from transformers import AutoTokenizer
@@ -362,14 +363,18 @@ def main() -> None:
 			)
 
 			# Update word to document map.
+			file_hash = file + article_sha1
 			for word in xml_bow:
 				if word in list(word_to_doc.keys()):
-					word_to_doc[word].append(file)
+					# word_to_doc[word].append(file)
+					word_to_doc[word].append(file_hash)
 				else:
-					word_to_doc[word] = [file]
+					# word_to_doc[word] = [file]
+					word_to_doc[word] = [file_hash]
 
 			# Update the document to words map.
-			doc_to_word[file] = xml_word_freq
+			# doc_to_word[file] = xml_word_freq
+			doc_to_word[file_hash] = xml_word_freq
 
 			###########################################################
 			# VECTOR EMBEDDINGS
