@@ -324,16 +324,34 @@ def vector_preprocessing(article_text: str, context_length: int, tokenizer: Auto
 	return 
 
 
-def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[Tag | NavigableString], num_proc: int=1):
+def merge_mappings(results: List[List[Dict], List[Dict], List[Dict]]):
+	pass
+
+
+def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[str], num_proc: int=1):
 	'''
-	Preprocess the text (in a single thread/process).
-	@param: args (str), 
-	@param: file (str),
-	@param: pages
-	@param: num_proc (int)
+	Preprocess the text (in a multiple processors.
+	@param: args (Namespace), the arguments passed in from the 
+		terminal.
+	@param: device (str), the name of the CPU or GPU device that the
+		embedding model will use.
+	@param: file (str), the filepath of the current file being
+		procesze = sys.getsizeof(doc_to_word)
+		# w2d_size = sys.getsizeof(word_to_doc)
+
+		# GB_SIZE = 1024 * 1024 * 1024
+		# if d2w_size // GB_SIZE > 1:
+		# 	print(f"Document to word map has reached over 1GB in size")
+		# 	exit()
+		# elif w2d_size // GB_SIZE > 1:
+		# 	print(f"Word to document map has reached over 1GB in size")
+		# 	exit()sed.
+	@param: pages (List[str]), the raw xml text that is going to be
+		processed.
+	@param: num_proc (int), the number of processes to use. Default is 
+		1.
 	@return: returns .
 	'''
-
 	# Break down the list of pages into chunks.
 	chunk_size = math.ceil(len(pages) / num_proc)
 	chunks = [
@@ -346,23 +364,26 @@ def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[T
 
 	# Distribute the arguments among the pool of processes.
 	with mp.Pool(processes=num_proc) as pool:
-		# results = pool.starmap(process_articles, arg_list)
-		# results = pool.imap(func=process_articles, iterable=arg_list)
-		results = pool.imap_unordered(process_articles, arg_list)
+		results = pool.starmap(process_articles, arg_list)
 
-	pass
+		word_to_doc, doc_to_word, chunk_to_doc = merge_mappings(
+			results
+		)
+
+	return word_to_doc, doc_to_word, chunk_to_doc
 
 
-def process_articles(args: Namespace, device: str, file: str, pages: List[Tag | NavigableString]):
+def process_articles(args: Namespace, device: str, file: str, pages_str: List[str]):
 	'''
 	Preprocess the text (in a single thread/process).
-	@param: args (Namespace), command arguments that will be used for 
-		downstream flows.
-	@param: device (str), the name of the device (CPU or GPU) that the 
-		embedding model should use.
-	@param: file (str), the file that the pages list comes from.
-	@param: pages (list[Tag | NavigableString]), the list of <page> 
-		tags retrieved by beautifulsoup in the xml file.
+	@param: args (Namespace), the arguments passed in from the 
+		terminal.
+	@param: device (str), the name of the CPU or GPU device that the
+		embedding model will use.
+	@param: file (str), the filepath of the current file being
+		processed.
+	@param: pages (List[str]), the raw xml text that is going to be
+		processed.
 	@return: returns .
 	'''
 	# Initialize local mappings.
@@ -370,10 +391,8 @@ def process_articles(args: Namespace, device: str, file: str, pages: List[Tag | 
 	doc_to_word = dict()
 	chunk_to_doc = dict()
 
-	# print(len(pages))
-	# print(args.bow)
-	# print(args.vector)
-	# print()
+	# Pass each page string into beautifulsoup.
+	pages = [BeautifulSoup(page, "lxml") for page in pages_str]
 
 	# for page in pages:
 	for page in tqdm(pages):
@@ -547,6 +566,17 @@ def main() -> None:
 		pages = soup.find_all("page")
 
 		# NOTE:
+		# We convert the list of <page> tags back to str because the
+		# multiprocessing module is not able to handle the Tag | 
+		# NavigableString objects as arguments to its starmap()
+		# function. Even though it may come at a compute cost (some
+		# additional latency), keeps the multiprocessing working which
+		# helps speed up the whole process.
+
+		# Convert each <page> tag in the list of pages to string.
+		pages_str = [str(page) for page in pages]
+
+		# NOTE:
 		# The tqdm package should come with one of the other packages
 		# required for this project. Specifically, it should come with
 		# either the pytorch or huggingface transformers packages. It
@@ -566,72 +596,24 @@ def main() -> None:
 		if args.multi_proc:
 			print('enabling multi processing')
 			max_proc = min(mp.cpu_count(), 16)
-			multiprocess_articles(args, device, file, pages, num_proc=max_proc)
+			multiprocess_articles(args, device, file, pages_str, num_proc=max_proc)
 		else:
 			print("enabling serial processing")
-			process_articles(args, device, file, pages)
-		exit()
+			process_articles(args, device, file, pages_str)
 
-		# Iterate through each page in the file and preprocess them.
-		# for page in pages:
-		for page in tqdm(pages):
-			# Isolate the article/page's SHA1.
-			sha1_tag = page.find("sha1")
-
-			if sha1_tag is None:
-				continue
-
-			article_sha1 = sha1_tag.get_text()
-			# print(f"\tArticle SHA1 {article_sha1}")
-
-			# Isolate the article/page's raw text.
-			article_text = process_page(page)
-			article_text_bow = copy.deepcopy(article_text)
-			article_text_v_db = copy.deepcopy(article_text)
-
-			###########################################################
-			# BAG OF WORDS
-			###########################################################
-			# Create a bag of words for each article (xml) file.
-			xml_bow, xml_word_freq = bow_preprocessing(
-				article_text_bow, return_word_freq=True
-			)
-
-			# Update word to document map.
-			file_hash = file + article_sha1
-			for word in xml_bow:
-				if word in list(word_to_doc.keys()):
-					# word_to_doc[word].append(file)
-					word_to_doc[word].append(file_hash)
-				else:
-					# word_to_doc[word] = [file]
-					word_to_doc[word] = [file_hash]
-
-			# Update the document to words map.
-			# doc_to_word[file] = xml_word_freq
-			doc_to_word[file_hash] = xml_word_freq
-
-			###########################################################
-			# VECTOR EMBEDDINGS
-			###########################################################
-			# Pass the article 
-			# xml_chunks = vector_preprocessing(article_text_v_db)
-
-			# Embed chunks and write them to vector storage.
-			# for chunk in xml_chunks:
-			# 	pass
 
 		# Compute size of mappings.
-		d2w_size = sys.getsizeof(doc_to_word)
-		w2d_size = sys.getsizeof(word_to_doc)
+		# d2w_size = sys.getsizeof(doc_to_word)
+		# w2d_size = sys.getsizeof(word_to_doc)
 
-		GB_SIZE = 1024 * 1024 * 1024
-		if d2w_size // GB_SIZE > 1:
-			print(f"Document to word map has reached over 1GB in size")
-			exit()
-		elif w2d_size // GB_SIZE > 1:
-			print(f"Word to document map has reached over 1GB in size")
-			exit()
+		# GB_SIZE = 1024 * 1024 * 1024
+		# if d2w_size // GB_SIZE > 1:
+		# 	print(f"Document to word map has reached over 1GB in size")
+		# 	exit()
+		# elif w2d_size // GB_SIZE > 1:
+		# 	print(f"Word to document map has reached over 1GB in size")
+		# 	exit()
+		exit()
 
 
 		# Perform garbage collection.
