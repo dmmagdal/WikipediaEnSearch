@@ -5,16 +5,18 @@
 # Windows/MacOS/Linux
 
 import argparse
+from argparse import Namespace
 # from collections import Counter
 import concurrent.futures as futures
 import copy
 # import gc
 import json
-# import math
+import math
 import multiprocessing as mp
 import os
 import string
 import sys
+from typing import List, Dict, Tuple
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag, NavigableString
@@ -322,7 +324,7 @@ def vector_preprocessing(article_text: str, context_length: int, tokenizer: Auto
 	return 
 
 
-def multiprocess_articles(args: str, device: str, file: str, pages: list[Tag | NavigableString], num_proc: int=4):
+def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[Tag | NavigableString], num_proc: int=1):
 	'''
 	Preprocess the text (in a single thread/process).
 	@param: args (str), 
@@ -331,20 +333,47 @@ def multiprocess_articles(args: str, device: str, file: str, pages: list[Tag | N
 	@param: num_proc (int)
 	@return: returns .
 	'''
+
+	# Break down the list of pages into chunks.
+	chunk_size = math.ceil(len(pages) / num_proc)
+	chunks = [
+		pages[i:i + chunk_size] 
+		for i in range(0, len(pages), chunk_size)
+	]
+
+	# Define the arguments list.
+	arg_list = [(args, device, file, chunk) for chunk in chunks]
+
+	# Distribute the arguments among the pool of processes.
+	with mp.Pool(processes=num_proc) as pool:
+		# results = pool.starmap(process_articles, arg_list)
+		# results = pool.imap(func=process_articles, iterable=arg_list)
+		results = pool.imap_unordered(process_articles, arg_list)
+
 	pass
 
 
-def process_articles(args: str, device: str, file: str, pages: list[Tag | NavigableString]):
+def process_articles(args: Namespace, device: str, file: str, pages: List[Tag | NavigableString]):
 	'''
 	Preprocess the text (in a single thread/process).
-	@param: args (str), 
-	@param: file (str),
-	@param: pages
+	@param: args (Namespace), command arguments that will be used for 
+		downstream flows.
+	@param: device (str), the name of the device (CPU or GPU) that the 
+		embedding model should use.
+	@param: file (str), the file that the pages list comes from.
+	@param: pages (list[Tag | NavigableString]), the list of <page> 
+		tags retrieved by beautifulsoup in the xml file.
 	@return: returns .
 	'''
 	# Initialize local mappings.
 	word_to_doc = dict()
 	doc_to_word = dict()
+	chunk_to_doc = dict()
+
+	# print(len(pages))
+	# print(args.bow)
+	# print(args.vector)
+	# print()
 
 	# for page in pages:
 	for page in tqdm(pages):
@@ -393,12 +422,12 @@ def process_articles(args: str, device: str, file: str, pages: list[Tag | Naviga
 			# xml_chunks = vector_preprocessing(article_text_v_db)
 			pass
 
-		# Embed chunks and write them to vector storage.
-		# for chunk in xml_chunks:
-		# 	pass
+			# Embed chunks and write them to vector storage.
+			# for chunk in xml_chunks:
+			# 	pass
 	
 
-	return doc_to_word, word_to_doc
+	return doc_to_word, word_to_doc, chunk_to_doc
 
 
 def main() -> None:
@@ -421,19 +450,20 @@ def main() -> None:
 	)
 	parser.add_argument(
 		"--multi_proc",
-		action="store_false",
+		action="store_true",
 		help="Specify whether to use multiprocessing in preprocessing. Default is false/not specified."
 	)
 	parser.add_argument(
 		"--bow",
-		action="store_false",
+		action="store_true",
 		help="Specify whether to run the bag-of-words preprocessing. Default is false/not specified."
 	)
 	parser.add_argument(
 		"--vector",
-		action="store_false",
+		action="store_true",
 		help="Specify whether to run the vector database preprocessing. Default is false/not specified."
 	)
+	args = parser.parse_args()
 
 	###################################################################
 	# VERIFY DATA FILES
@@ -532,6 +562,15 @@ def main() -> None:
 		# approach is still fine for underpowered or consumer 
 		# computers. I just want the option for people who have more
 		# powerful hardware and want results quicker.
+
+		if args.multi_proc:
+			print('enabling multi processing')
+			max_proc = min(mp.cpu_count(), 16)
+			multiprocess_articles(args, device, file, pages, num_proc=max_proc)
+		else:
+			print("enabling serial processing")
+			process_articles(args, device, file, pages)
+		exit()
 
 		# Iterate through each page in the file and preprocess them.
 		# for page in pages:
