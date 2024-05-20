@@ -4,14 +4,18 @@
 # Python 3.9
 # Windows/MacOS/Linux
 
-import os
+import argparse
 # from collections import Counter
+import concurrent.futures as futures
 import copy
 # import gc
 import json
 # import math
+import multiprocessing as mp
+import os
 import string
 import sys
+
 from bs4 import BeautifulSoup
 from bs4.element import Tag, NavigableString
 import faiss
@@ -21,8 +25,9 @@ from nltk.tokenize import word_tokenize
 # import num2words
 from num2words import num2words
 # import numpy as np
+import torch
 from tqdm import tqdm
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModel
 
 
 def process_page(page: Tag | NavigableString) -> str:
@@ -317,6 +322,85 @@ def vector_preprocessing(article_text: str, context_length: int, tokenizer: Auto
 	return 
 
 
+def multiprocess_articles(args: str, device: str, file: str, pages: list[Tag | NavigableString], num_proc: int=4):
+	'''
+	Preprocess the text (in a single thread/process).
+	@param: args (str), 
+	@param: file (str),
+	@param: pages
+	@param: num_proc (int)
+	@return: returns .
+	'''
+	pass
+
+
+def process_articles(args: str, device: str, file: str, pages: list[Tag | NavigableString]):
+	'''
+	Preprocess the text (in a single thread/process).
+	@param: args (str), 
+	@param: file (str),
+	@param: pages
+	@return: returns .
+	'''
+	# Initialize local mappings.
+	word_to_doc = dict()
+	doc_to_word = dict()
+
+	# for page in pages:
+	for page in tqdm(pages):
+		# Isolate the article/page's SHA1.
+		sha1_tag = page.find("sha1")
+
+		if sha1_tag is None:
+			continue
+
+		article_sha1 = sha1_tag.get_text()
+		# print(f"\tArticle SHA1 {article_sha1}")
+
+		# Isolate the article/page's raw text.
+		article_text = process_page(page)
+		article_text_bow = copy.deepcopy(article_text)
+		article_text_v_db = copy.deepcopy(article_text)
+
+		###############################################################
+		# BAG OF WORDS
+		###############################################################
+		if args.bow:
+			# Create a bag of words for each article (xml) file.
+			xml_bow, xml_word_freq = bow_preprocessing(
+				article_text_bow, return_word_freq=True
+			)
+
+			# Update word to document map.
+			file_hash = file + article_sha1
+			for word in xml_bow:
+				if word in list(word_to_doc.keys()):
+					# word_to_doc[word].append(file)
+					word_to_doc[word].append(file_hash)
+				else:
+					# word_to_doc[word] = [file]
+					word_to_doc[word] = [file_hash]
+
+			# Update the document to words map.
+			# doc_to_word[file] = xml_word_freq
+			doc_to_word[file_hash] = xml_word_freq
+
+		###############################################################
+		# VECTOR EMBEDDINGS
+		###############################################################
+		if args.vector:
+			# Pass the article 
+			# xml_chunks = vector_preprocessing(article_text_v_db)
+			pass
+
+		# Embed chunks and write them to vector storage.
+		# for chunk in xml_chunks:
+		# 	pass
+	
+
+	return doc_to_word, word_to_doc
+
+
 def main() -> None:
 	'''
 	Main method. Process the individual wikipedia articles from their
@@ -326,6 +410,31 @@ def main() -> None:
 	@param: takes no arguments.
 	@return: returns nothing.
 	'''
+	###################################################################
+	# PROGRAM ARGUMENTS
+	###################################################################
+	parser = argparse.ArgumentParser()
+	parser.add_argument(
+		"--restart",
+		action="store_true",
+		help="Specify whether to restart the preprocessing from scratch. Default is false/not specified."
+	)
+	parser.add_argument(
+		"--multi_proc",
+		action="store_false",
+		help="Specify whether to use multiprocessing in preprocessing. Default is false/not specified."
+	)
+	parser.add_argument(
+		"--bow",
+		action="store_false",
+		help="Specify whether to run the bag-of-words preprocessing. Default is false/not specified."
+	)
+	parser.add_argument(
+		"--vector",
+		action="store_false",
+		help="Specify whether to run the vector database preprocessing. Default is false/not specified."
+	)
+
 	###################################################################
 	# VERIFY DATA FILES
 	###################################################################
@@ -380,6 +489,19 @@ def main() -> None:
 	# and documents to words mappings.
 	word_to_doc = dict()
 	doc_to_word = dict()
+
+	# NOTE:
+	# Be careful if you are on mac. Because Apple Silicon works off of
+	# the unified memory model, there may be some performance hit for 
+	# CPU bound tasks. The hope is that MPS will actually accelerate 
+	# the embedding model's performance.
+
+	# GPU setup.
+	device = "cpu"
+	if torch.cuda.is_available():
+		device = "cuda"
+	elif torch.backends.mps.is_available():
+		device = "mps"
 
 	# Iterate through each file and preprocess it.
 	for idx, file in enumerate(data_files):
