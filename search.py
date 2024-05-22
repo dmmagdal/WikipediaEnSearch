@@ -63,6 +63,17 @@ class ReRankSearch:
 
 class BM25:
 	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
+
+		doc_to_word = dict()
+		word_to_doc = dict()
+
+		# Compute corpus size (number of documents) and average
+		# document length.
+		self.docs = list(doc_to_word.keys())
+		self.num_docs = len(self.docs)
+		self.avg_doc_len = sum([
+			sum(doc_to_word[doc].values()) for doc in self.docs
+		]) / self.num_docs
 		pass
 
 

@@ -6,16 +6,12 @@
 
 import argparse
 from argparse import Namespace
-# from collections import Counter
-import concurrent.futures as futures
 import copy
-# import gc
 import json
 import math
 import multiprocessing as mp
 import os
 import string
-import sys
 from typing import List, Dict, Tuple
 
 from bs4 import BeautifulSoup
@@ -24,9 +20,9 @@ import faiss
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
-# import num2words
 from num2words import num2words
 # import numpy as np
+import requests
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
@@ -297,7 +293,7 @@ def bow_preprocessing(text: str, return_word_freq: bool=False):
 	return tuple([bag_of_words, word_freqs])
 
 
-def vector_preprocessing(article_text: str, context_length: int, tokenizer: AutoTokenizer):
+def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokenizer):
 	'''
 	Preprocess the text to yield a list of chunks of the text. Each 
 		chunk is the longest possible set of text that can be passed to
@@ -318,13 +314,47 @@ def vector_preprocessing(article_text: str, context_length: int, tokenizer: Auto
 	# Subtract the number of splits from the context length so that we
 	# do not forget about the newline characters removed in the split
 	# during the tokenization.
-	true_context_length = context_length - num_splits
+	# true_context_length = context_length - num_splits
 
 
 	return 
 
 
-def merge_mappings(results: List[List[Dict], List[Dict], List[Dict]]):
+def load_model(config: Dict) -> Tuple[AutoModel, AutoModel]:
+	# Check for the local copy of the model. If the model doesn't have
+	# a local copy (the path doesn't exist), download it.
+	model_name = config["vector-search_config"]["model"]
+	model_config = config["models"][model_name]
+	model_path = model_name["storage_dir"]
+	
+	# Check for path and that path is a directory. Make it if either is
+	# not true.
+	if os.path.exists(model_path) or os.path.isdir(model_path):
+		os.makedirs(model_path, exist_ok=True)
+
+	# Check for path the be populated with files (weak check). Download
+	# the tokenizer and model and clean up files once done.
+	if len(os.listdir(model_path)) == 0:
+		print(f"Model {model_name} needs to be downloaded.")
+
+		# Check for internet connection (also checks to see that
+		# huggingface is online as well). Exit if fails.
+		response = requests.get("https://huggingface.co/")
+		if response.status_code != 200:
+			print(f"Request to huggingface.co returned unexpected status code: {response.status_code}")
+			print(f"Unable to download {model_name} model.")
+			exit(1)
+
+		pass
+
+	
+	pass
+
+
+def merge_mappings(results: List[List[Dict]]):
+	assert len(results) == 3, "Expected results argument to be a tuple of length 3."
+	assert all([isinstance(result, dict) for result in results], "Expected results argument to contain all dictionary objects.")
+	word_to_docs, doc_to_words, chunk_to_docs = results
 	pass
 
 
@@ -350,7 +380,8 @@ def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[s
 		processed.
 	@param: num_proc (int), the number of processes to use. Default is 
 		1.
-	@return: returns .
+	@return: returns the set of dictionaries containing the necessary 
+		data and metadata to index the articles.
 	'''
 	# Break down the list of pages into chunks.
 	chunk_size = math.ceil(len(pages) / num_proc)
@@ -364,12 +395,15 @@ def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[s
 
 	# Distribute the arguments among the pool of processes.
 	with mp.Pool(processes=num_proc) as pool:
+		# Aggregate the results of processes.
 		results = pool.starmap(process_articles, arg_list)
 
+		# Pass the aggregate results tuple to be merged.
 		word_to_doc, doc_to_word, chunk_to_doc = merge_mappings(
 			results
 		)
 
+	# Return the different mappings.
 	return word_to_doc, doc_to_word, chunk_to_doc
 
 
@@ -384,7 +418,8 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 		processed.
 	@param: pages (List[str]), the raw xml text that is going to be
 		processed.
-	@return: returns .
+	@return: returns the set of dictionaries containing the necessary 
+		data and metadata to index the articles.
 	'''
 	# Initialize local mappings.
 	word_to_doc = dict()
@@ -393,6 +428,19 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 
 	# Pass each page string into beautifulsoup.
 	pages = [BeautifulSoup(page, "lxml") for page in pages_str]
+
+	# Load the configurations from the config JSON.
+	with open("config.json", "r") as f:
+		config = json.load(f)
+
+	# Load the model tokenizer and model (if applicable). Do this here
+	# instead of within the for loop for (runtime) efficiency.
+	if args.vector:
+		# Load the tokenizer and model.
+		tokenizer, model = load_model(config)
+	else:
+		# Initialize variables to None
+		tokenizer, model = None, None
 
 	# for page in pages:
 	for page in tqdm(pages):
@@ -437,15 +485,21 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 		# VECTOR EMBEDDINGS
 		###############################################################
 		if args.vector:
+			# Assertion to make sure tokenizer and model is
+			# initialized.
+			assert None not in [tokenizer, model], "Model tokenizer and model is expected to be initialized for vector embeddings preprocessing."
+
 			# Pass the article 
-			# xml_chunks = vector_preprocessing(article_text_v_db)
+			xml_chunks = vector_preprocessing(
+				article_text_v_db, config, tokenizer
+			)
 			pass
 
 			# Embed chunks and write them to vector storage.
 			# for chunk in xml_chunks:
 			# 	pass
 	
-
+	# Return the mappings.
 	return doc_to_word, word_to_doc, chunk_to_doc
 
 
@@ -595,7 +649,23 @@ def main() -> None:
 
 		if args.multi_proc:
 			print('enabling multi processing')
-			max_proc = min(mp.cpu_count(), 16)
+
+			# Determine the number of CPU cores to use (this will be
+			# passed down the the multiprocessing function)
+			max_proc = min(mp.cpu_count(), 32)
+
+			# Reset the device if the number of processes to be used is
+			# greater than 4. This is because the device setting is
+			# quite rudimentary with this system. I don't know
+			# 1) How much VRAM each instance of a model would take up 
+			#	vs the amount of VRAM available (4Gb, 8Gb, 12GB, ...).
+			# 2) How transformers or pytorch would have to be 
+			#	configured to balance the number of model instances on
+			#	each process against multiple GPUs on device.
+			# For now, this just makes it simpler.
+			if max_proc > 4:
+				device = "cpu"
+
 			multiprocess_articles(args, device, file, pages_str, num_proc=max_proc)
 		else:
 			print("enabling serial processing")

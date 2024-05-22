@@ -3,6 +3,23 @@
     "bm25_config": {},
     "tf-idf_config": {},
     "vector-search_config": {
-        "model": "bert-base-uncased"
+        "model": "bert"
+    },
+    "preprocessing": {
+        "token_overlap": 64
+    },
+    "models": {
+        "bert": {
+            "model_id": "bert-base-uncased",
+            "cache_dir": "",
+            "storage_dir": "",
+            "max_tokens": 512
+        },
+        "mobilebert": {
+            "model_id": "bert-base-uncased",
+            "cache_dir": "",
+            "storage_dir": "",
+            "max_tokens": 512
+        }
     }
 }
