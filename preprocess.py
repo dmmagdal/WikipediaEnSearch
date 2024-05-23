@@ -11,6 +11,7 @@ import json
 import math
 import multiprocessing as mp
 import os
+import shutil
 import string
 from typing import List, Dict, Tuple
 
@@ -300,8 +301,9 @@ def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokeniz
 		the embedding model tokenizer.
 	@param: text (str), the raw text that is to be processed into a bag
 		of words.
-	@param: context_length (int), the maximum number of tokens that
-	 	will be accepted by the embedding model.
+	@param: config (dict), the configuration parameters. These 
+		parameters detail important parts of the vector preprocessing
+		such as context length.
 	@param: tokenizer (AutoTokenizer), the tokenizer for the embedding
 		model.
 	@return: returns a List[str] of the text sliced into chunks that
@@ -311,21 +313,40 @@ def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokeniz
 	line_splits = article_text.split("\n")
 	num_splits = len(line_splits)
 
+	model_name = config["vector-search_config"]["model"]
+	model_config = config["models"][model_name]
+	context_length = model_config["max_tokens"]
+	overlap = config["preprocessing"["token_overlap"]]
+
 	# Subtract the number of splits from the context length so that we
 	# do not forget about the newline characters removed in the split
 	# during the tokenization.
 	# true_context_length = context_length - num_splits
 
+	# Splitting scheme:
+	# 1) Split into paragraphs (split by newline "\n" character).
+	# 2) Tokenize each paragraph
+	#	a) if token sequence is too shoort, pad.
+	#	b) if token sequence is too long, split up the tokens into 
+	#		chunks with some overlap.
+	for line in line_splits:
+		# Skip empty entries.
+		if line == "":
+			continue
+
+		# Perform an initial toeknization.
+		tokens = tokenizer
+
 
 	return 
 
 
-def load_model(config: Dict) -> Tuple[AutoModel, AutoModel]:
+def load_model(config: Dict) -> Tuple[AutoTokenizer, AutoModel]:
 	# Check for the local copy of the model. If the model doesn't have
 	# a local copy (the path doesn't exist), download it.
 	model_name = config["vector-search_config"]["model"]
 	model_config = config["models"][model_name]
-	model_path = model_name["storage_dir"]
+	model_path = model_config["storage_dir"]
 	
 	# Check for path and that path is a directory. Make it if either is
 	# not true.
@@ -345,10 +366,33 @@ def load_model(config: Dict) -> Tuple[AutoModel, AutoModel]:
 			print(f"Unable to download {model_name} model.")
 			exit(1)
 
-		pass
+		# Create cache path folders.
+		cache_path = model_config["cache_dir"]
+		os.makedirs(cache_path, exist_ok=True)
+		os.makedirs(model_path, exist_ok=True)
 
+		# Load tokenizer and model.
+		model_id = model_config["model_id"]
+		tokenizer = AutoTokenizer.from_pretrained(
+			model_id, cache_dir=cache_path
+		)
+		model = AutoModel.from_pretrained(
+			model_id, cache_dir=cache_path
+		)
+
+		# Save the tokenizer and model to the save path.
+		tokenizer.save_pretrained(model_path)
+		model.save_pretrained(model_path)
+
+		# Delete the cache.
+		shutil.rmtree(cache_path)
 	
-	pass
+	# Load the tokenizer and model.
+	tokenizer = AutoTokenizer.from_pretrained(model_path)
+	model = AutoModel.from_pretrained(model_path)
+
+	# Return the tokenizer and model.
+	return tokenizer, model
 
 
 def merge_mappings(results: List[List[Dict]]):
