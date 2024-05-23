@@ -1,1 +1,4 @@
 /wiki-search
+/bert*
+/hkunlp*
+/sentence-transformers*
