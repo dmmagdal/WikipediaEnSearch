@@ -10,7 +10,7 @@
     },
     "models": {
         "bert": {
-            "model_id": "bert-base-uncased",
+            "model_id": "google-bert/bert-base-uncased",
             "cache_dir": "bert-base-uncased_cache",
             "storage_dir": "bert-base-uncased",
             "max_tokens": 512
@@ -19,6 +19,18 @@
             "model_id": "google/mobilebert-uncased",
             "cache_dir": "google_mobilebert-uncased_cache",
             "storage_dir": "google_mobilebert-uncased",
+            "max_tokens": 512
+        },
+        "distilbert": {
+            "model_id": "distilbert/distilbert-base-uncased",
+            "cache_dir": "google_mobilebert-uncased_cache",
+            "storage_dir": "google_mobilebert-uncased",
+            "max_tokens": 512
+        },
+        "bert-large": {
+            "model_id": "google-bert/bert-large-uncased",
+            "cache_dir": "bert-large-uncased_cache",
+            "storage_dir": "bert-large-uncased",
             "max_tokens": 512
         },
         "st-minilm-l6-v1": {
