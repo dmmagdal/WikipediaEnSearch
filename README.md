@@ -59,6 +59,13 @@ Description: Provides a text based search for Wikipedia (English only)
          - Opting for utilizing a second machine or SQL database to load in article data/text from memory/RAM instead of using file IO to read xml files.
      - In search
          - Opting for utilizing a second machine to load in and query indices from memory/RAM instead of using file IO to read the index files.
+ - Multiprocessing
+     - Getting transformer models running with multiprocessing
+         - Cannot re-initialize CUDA in forked subprocess [github issue](https://github.com/pytorch/pytorch/issues/40403#issuecomment-648378957)
+     - Videos going using python's multiprocessing
+         - Unlocking your CPU cores in Python (multiprocessing) [video](https://www.youtube.com/watch?v=X7vBbelRXn0)
+         - Multiprocessing in Python: Pool [video](https://www.youtube.com/watch?v=u2jTn-Gj2Xw)
+         - Python starmap (itertools): A short and easy intro [video](https://www.youtube.com/watch?v=wiwb5WAByFE)
  - Got ascii art from [here](https://patorjk.com/software/taag/#p=display&f=Sub-Zero&t=Wikipedia%20%0ASearch)
 
 
@@ -210,6 +217,7 @@ word: [document_1_path, document_2_path, ... , document_n_path]
  - Transformers
      - getting started with embeddings [blog post](https://huggingface.co/blog/getting-started-with-embeddings)
      - using sentencetransformers at huggingface [documentation](https://huggingface.co/docs/hub/en/sentence-transformers)
+     - loading models direcdtly to gpu [stackoverflow](https://stackoverflow.com/questions/77237818/how-to-load-a-huggingface-pretrained-transformer-model-directly-to-gpu)
  - Sentence Transformers
      - sentence transformers in the huggingface hub [blog post](https://huggingface.co/blog/sentence-transformers-in-the-hub)
      - [documentation](https://www.sbert.net/)
@@ -220,5 +228,8 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - [gc](https://docs.python.org/3.9/library/gc.html)
      - [json](https://docs.python.org/3.9/library/json.html)
      - [math](https://docs.python.org/3.9/library/math.html)
+     - [multiprocessing](https://docs.python.org/3.9/library/multiprocessing.html)
      - [os](https://docs.python.org/3.9/library/os.html)
      - [string](https://docs.python.org/3.9/library/string.html)
+     - [shutil](https://docs.python.org/3.9/library/shutil.html)
+     - [typing](https://docs.python.org/3.9/library/typing.html)

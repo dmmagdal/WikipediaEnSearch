@@ -316,7 +316,7 @@ def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokeniz
 	model_name = config["vector-search_config"]["model"]
 	model_config = config["models"][model_name]
 	context_length = model_config["max_tokens"]
-	overlap = config["preprocessing"["token_overlap"]]
+	overlap = config["preprocessing"]["token_overlap"]
 
 	# Subtract the number of splits from the context length so that we
 	# do not forget about the newline characters removed in the split
@@ -335,13 +335,30 @@ def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokeniz
 			continue
 
 		# Perform an initial toeknization.
-		tokens = tokenizer
+		tokens = tokenizer.encode(line)
+
+		if len(tokens) < context_length:
+			tokens = tokenizer.encode(
+				line,
+				padding=True,
+			)
+		elif len(tokens > context_length):
+			pass
 
 
 	return 
 
 
-def load_model(config: Dict) -> Tuple[AutoTokenizer, AutoModel]:
+def load_model(config: Dict, device="cpu") -> Tuple[AutoTokenizer, AutoModel]:
+	'''
+	Load the tokenizer and model. Download them if they're not found 
+		locally.
+	@param: config (Dict), the configuration JSON. This will specify
+		the model and its path attributes.
+	@param: device (str), tells where to map the model. Default is 
+		"cpu".
+	@return: returns the tokenizer and model for embedding the text.
+	'''
 	# Check for the local copy of the model. If the model doesn't have
 	# a local copy (the path doesn't exist), download it.
 	model_name = config["vector-search_config"]["model"]
@@ -350,7 +367,7 @@ def load_model(config: Dict) -> Tuple[AutoTokenizer, AutoModel]:
 	
 	# Check for path and that path is a directory. Make it if either is
 	# not true.
-	if os.path.exists(model_path) or os.path.isdir(model_path):
+	if not os.path.exists(model_path) or not os.path.isdir(model_path):
 		os.makedirs(model_path, exist_ok=True)
 
 	# Check for path the be populated with files (weak check). Download
@@ -374,10 +391,10 @@ def load_model(config: Dict) -> Tuple[AutoTokenizer, AutoModel]:
 		# Load tokenizer and model.
 		model_id = model_config["model_id"]
 		tokenizer = AutoTokenizer.from_pretrained(
-			model_id, cache_dir=cache_path
+			model_id, cache_dir=cache_path, device_map=device
 		)
 		model = AutoModel.from_pretrained(
-			model_id, cache_dir=cache_path
+			model_id, cache_dir=cache_path, device_map=device
 		)
 
 		# Save the tokenizer and model to the save path.
@@ -388,14 +405,20 @@ def load_model(config: Dict) -> Tuple[AutoTokenizer, AutoModel]:
 		shutil.rmtree(cache_path)
 	
 	# Load the tokenizer and model.
-	tokenizer = AutoTokenizer.from_pretrained(model_path)
-	model = AutoModel.from_pretrained(model_path)
+	tokenizer = AutoTokenizer.from_pretrained(
+		model_path, device_map=device
+	)
+	model = AutoModel.from_pretrained(
+		model_path, device_map=device
+	)
 
 	# Return the tokenizer and model.
 	return tokenizer, model
 
 
 def merge_mappings(results: List[List[Dict]]):
+	print(len(results))
+	print(len(results[0]))
 	assert len(results) == 3, "Expected results argument to be a tuple of length 3."
 	assert all([isinstance(result, dict) for result in results], "Expected results argument to contain all dictionary objects.")
 	word_to_docs, doc_to_words, chunk_to_docs = results
@@ -479,12 +502,10 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 
 	# Load the model tokenizer and model (if applicable). Do this here
 	# instead of within the for loop for (runtime) efficiency.
+	tokenizer, model = None, None
 	if args.vector:
 		# Load the tokenizer and model.
-		tokenizer, model = load_model(config)
-	else:
-		# Initialize variables to None
-		tokenizer, model = None, None
+		tokenizer, model = load_model(config, device)
 
 	# for page in pages:
 	for page in tqdm(pages):
@@ -625,9 +646,12 @@ def main() -> None:
 	###################################################################
 	# EMBEDDING MODEL SETUP
 	###################################################################
-	# Check for embedding module files WikipediaEnDownload submodule and additional necessary
-	# folders to be initialized.
-	# 
+	# Load the configurations from the config JSON.
+	with open("config.json", "r") as f:
+		config = json.load(f)
+
+	# Check for embedding model files and download them if necessary.
+	load_model(config)
 
 	###################################################################
 	# FILE PREPROCESSING
@@ -656,7 +680,7 @@ def main() -> None:
 		with open(file, "r") as f:
 			raw_text = f.read()
 
-		print(f"Processing file {file}...")
+		print(f"Processing file ({idx + 1}/{len(data_files)}) {file}...")
 
 		# Load the raw text into a beautifulsoup object and extract the
 		# <page> tags.
@@ -692,11 +716,9 @@ def main() -> None:
 		# powerful hardware and want results quicker.
 
 		if args.multi_proc:
-			print('enabling multi processing')
-
 			# Determine the number of CPU cores to use (this will be
 			# passed down the the multiprocessing function)
-			max_proc = min(mp.cpu_count(), 32)
+			max_proc = min(mp.cpu_count(), 32) # 16 or 32 on darkstar
 
 			# Reset the device if the number of processes to be used is
 			# greater than 4. This is because the device setting is
@@ -706,13 +728,17 @@ def main() -> None:
 			# 2) How transformers or pytorch would have to be 
 			#	configured to balance the number of model instances on
 			#	each process against multiple GPUs on device.
-			# For now, this just makes it simpler.
+			# This is also still assuming that with multiprocessing
+			# enabled, the user has a sufficient regular memory/RAM to
+			# load everything there. For now, this just makes things
+			# simpler.
 			if max_proc > 4:
 				device = "cpu"
 
-			multiprocess_articles(args, device, file, pages_str, num_proc=max_proc)
+			multiprocess_articles(
+				args, device, file, pages_str, num_proc=max_proc
+			)
 		else:
-			print("enabling serial processing")
 			process_articles(args, device, file, pages_str)
 
 
@@ -754,4 +780,7 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+	# Required to initialize models on GPU for multiprocessing. Placed
+	# here due to recommendation from official python documentation.
+	mp.set_start_method("spawn", force=True)
 	main()
