@@ -18,6 +18,7 @@ from typing import List, Dict, Tuple
 from bs4 import BeautifulSoup
 from bs4.element import Tag, NavigableString
 import faiss
+import lancedb
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
@@ -294,11 +295,11 @@ def bow_preprocessing(text: str, return_word_freq: bool=False):
 	return tuple([bag_of_words, word_freqs])
 
 
-def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokenizer):
+def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokenizer) -> List[List[int]]:
 	'''
-	Preprocess the text to yield a list of chunks of the text. Each 
-		chunk is the longest possible set of text that can be passed to
-		the embedding model tokenizer.
+	Preprocess the text to yield a list of chunks of the tokenized 
+		text. Each chunk is the longest possible set of text that can 
+		be passed to the embedding model tokenizer.
 	@param: text (str), the raw text that is to be processed into a bag
 		of words.
 	@param: config (dict), the configuration parameters. These 
@@ -306,22 +307,22 @@ def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokeniz
 		such as context length.
 	@param: tokenizer (AutoTokenizer), the tokenizer for the embedding
 		model.
-	@return: returns a List[str] of the text sliced into chunks that
-		are acceptable size to the embedding model.
+	@return: returns a List[List[int]] of the text tokenized and sliced
+		into chunks that are acceptable size to the embedding model.
 	'''
 	# Split the text but newline characters ("\n").
 	line_splits = article_text.split("\n")
-	num_splits = len(line_splits)
 
+	# Pull the model's context length and overlap token count from the
+	# configuration file.
 	model_name = config["vector-search_config"]["model"]
 	model_config = config["models"][model_name]
 	context_length = model_config["max_tokens"]
 	overlap = config["preprocessing"]["token_overlap"]
 
-	# Subtract the number of splits from the context length so that we
-	# do not forget about the newline characters removed in the split
-	# during the tokenization.
-	# true_context_length = context_length - num_splits
+	# Make sure that the overlap does not exceed the model context
+	# length.
+	assert overlap < context_length, f"Number of overlapping tokens ({overlap}) must NOT exceed the model context length ({context_length})"
 
 	# Splitting scheme:
 	# 1) Split into paragraphs (split by newline "\n" character).
@@ -329,24 +330,54 @@ def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokeniz
 	#	a) if token sequence is too shoort, pad.
 	#	b) if token sequence is too long, split up the tokens into 
 	#		chunks with some overlap.
+
+	# Initialize the list that will contain the chunks of tokens.
+	token_chunks = []
+
+	# Iterate through each paragraph/line and further chunk the text.
 	for line in line_splits:
 		# Skip empty entries.
 		if line == "":
 			continue
 
-		# Perform an initial toeknization.
-		tokens = tokenizer.encode(line)
+		# Perform an initial tokenization.
+		tokens = tokenizer.encode(line, add_special_tokens=False)
 
 		if len(tokens) < context_length:
+			# If the raw text is too short, re-run the tokenization but
+			# with padding enabled this time.
 			tokens = tokenizer.encode(
 				line,
-				padding=True,
+				add_special_tokens=False,
+				padding="max_length",
 			)
-		elif len(tokens > context_length):
-			pass
+			token_chunks.append(tokens)
+		elif len(tokens) > context_length:
+			# If the raw text is too long, break the tokenization up.
+			chunks = [
+				tokens[i:i + context_length]
+				for i in range(0, len(tokens), context_length - overlap)
+			]
 
+			# Pad last chunk if it does not match the context length.
+			if len(chunks[-1]) != context_length:
+				decoded_string = tokenizer.decode(
+					chunks[-1], 
+					skip_special_tokens=True
+				)
+				chunks[-1] = tokenizer.encode(
+					decoded_string, 
+					add_special_tokens=True, 
+					padding="max_length"
+				)
+			
+			token_chunks += chunks
+		else:
+			# The raw text was tokenized exactly to the context length.
+			token_chunks.append(tokens)
 
-	return 
+	# Return the list of token chunks.
+	return token_chunks
 
 
 def load_model(config: Dict, device="cpu") -> Tuple[AutoTokenizer, AutoModel]:
@@ -416,13 +447,40 @@ def load_model(config: Dict, device="cpu") -> Tuple[AutoTokenizer, AutoModel]:
 	return tokenizer, model
 
 
-def merge_mappings(results: List[List[Dict]]):
-	print(len(results))
-	print(len(results[0]))
-	assert len(results) == 3, "Expected results argument to be a tuple of length 3."
-	assert all([isinstance(result, dict) for result in results], "Expected results argument to contain all dictionary objects.")
-	word_to_docs, doc_to_words, chunk_to_docs = results
-	pass
+def merge_mappings(results: List[List[Dict]]) -> Tuple[Dict]:
+	'''
+	Merge the results of processing each article in the file from the 
+		multiprocessing pool.
+	@param: results (list[list[dict]]), the list containing the outputs
+		of the processing function for each processor.
+	@return: returns a tuple of the same processing outputs now 
+		aggregated together.
+	'''
+	# Initialize aggregate variables.
+	aggr_word_to_doc = dict()
+	aggr_doc_to_word = dict()
+	aggr_chunk_to_doc = dict()
+
+	# Results mappings shape (num_processors, tuple_len). Iterate
+	# through each result and update the aggregate variables.
+	for result in results:
+		# Unpack the result tuple.
+		word_to_doc, doc_to_word, chunk_to_doc = result
+
+		# Iteratively update the word to document dictionary.
+		for key, value in word_to_doc.items():
+			if key not in aggr_word_to_doc:
+				aggr_word_to_doc[key] = value
+			else:
+				aggr_doc_to_word[key] += value
+
+		# Update the document to word dictionary. Just call a
+		# dictionary's update() function here since every key in the
+		# entirety of the results is unique.
+		aggr_doc_to_word.update(doc_to_word)
+
+	# Return the aggregated data.
+	return aggr_word_to_doc, aggr_doc_to_word, aggr_chunk_to_doc
 
 
 def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[str], num_proc: int=1):
@@ -433,16 +491,7 @@ def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[s
 	@param: device (str), the name of the CPU or GPU device that the
 		embedding model will use.
 	@param: file (str), the filepath of the current file being
-		procesze = sys.getsizeof(doc_to_word)
-		# w2d_size = sys.getsizeof(word_to_doc)
-
-		# GB_SIZE = 1024 * 1024 * 1024
-		# if d2w_size // GB_SIZE > 1:
-		# 	print(f"Document to word map has reached over 1GB in size")
-		# 	exit()
-		# elif w2d_size // GB_SIZE > 1:
-		# 	print(f"Word to document map has reached over 1GB in size")
-		# 	exit()sed.
+		processed.
 	@param: pages (List[str]), the raw xml text that is going to be
 		processed.
 	@param: num_proc (int), the number of processes to use. Default is 
@@ -555,7 +604,7 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 			assert None not in [tokenizer, model], "Model tokenizer and model is expected to be initialized for vector embeddings preprocessing."
 
 			# Pass the article 
-			xml_chunks = vector_preprocessing(
+			token_chunks = vector_preprocessing(
 				article_text_v_db, config, tokenizer
 			)
 			pass

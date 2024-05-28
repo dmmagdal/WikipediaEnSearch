@@ -218,6 +218,7 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - getting started with embeddings [blog post](https://huggingface.co/blog/getting-started-with-embeddings)
      - using sentencetransformers at huggingface [documentation](https://huggingface.co/docs/hub/en/sentence-transformers)
      - loading models direcdtly to gpu [stackoverflow](https://stackoverflow.com/questions/77237818/how-to-load-a-huggingface-pretrained-transformer-model-directly-to-gpu)
+     - estimate model memory usage [documentation](https://huggingface.co/docs/accelerate/en/usage_guides/model_size_estimator)
  - Sentence Transformers
      - sentence transformers in the huggingface hub [blog post](https://huggingface.co/blog/sentence-transformers-in-the-hub)
      - [documentation](https://www.sbert.net/)
