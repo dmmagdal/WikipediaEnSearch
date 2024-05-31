@@ -310,19 +310,16 @@ def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokeniz
 	@return: returns a List[List[int]] of the text tokenized and sliced
 		into chunks that are acceptable size to the embedding model.
 	'''
-	# Split the text but newline characters ("\n").
-	line_splits = article_text.split("\n")
-
 	# Pull the model's context length and overlap token count from the
 	# configuration file.
 	model_name = config["vector-search_config"]["model"]
 	model_config = config["models"][model_name]
 	context_length = model_config["max_tokens"]
-	overlap = config["preprocessing"]["token_overlap"]
+	# overlap = config["preprocessing"]["token_overlap"]
 
 	# Make sure that the overlap does not exceed the model context
 	# length.
-	assert overlap < context_length, f"Number of overlapping tokens ({overlap}) must NOT exceed the model context length ({context_length})"
+	# assert overlap < context_length, f"Number of overlapping tokens ({overlap}) must NOT exceed the model context length ({context_length})"
 
 	# Splitting scheme:
 	# 1) Split into paragraphs (split by newline "\n" character).
@@ -331,53 +328,151 @@ def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokeniz
 	#	b) if token sequence is too long, split up the tokens into 
 	#		chunks with some overlap.
 
-	# Initialize the list that will contain the chunks of tokens.
-	token_chunks = []
+	splitters = ["\n\n", "\n", " ", ""] # Same as default on RecursiveCharacterTextSplitter
+	text_chunks = [(article_text, 0)]
+	metadata = []
 
-	# Iterate through each paragraph/line and further chunk the text.
-	for line in line_splits:
-		# Skip empty entries.
-		if line == "":
-			continue
+	# Initialize the list of chunks that will be processed by the next
+	# splitter.
+	next_chunks = []
 
-		# Perform an initial tokenization.
-		tokens = tokenizer.encode(line, add_special_tokens=False)
+	# Iterate through the splitters.
+	for splitter in splitters:
+		# Reset the next splitter chunks list.
+		next_chunks = []
 
-		if len(tokens) < context_length:
-			# If the raw text is too short, re-run the tokenization but
-			# with padding enabled this time.
-			tokens = tokenizer.encode(
-				line,
-				add_special_tokens=False,
-				padding="max_length",
-			)
-			token_chunks.append(tokens)
-		elif len(tokens) > context_length:
-			# If the raw text is too long, break the tokenization up.
-			chunks = [
-				tokens[i:i + context_length]
-				for i in range(0, len(tokens), context_length - overlap)
-			]
+		print(f"Splitter {splitter}")
+		print(f"Text chunks ({len(text_chunks)})")
+		for text, offset in text_chunks:
+			print(f"offset {offset}, text len {len(text)},  text: {text}")
 
-			# Pad last chunk if it does not match the context length.
-			if len(chunks[-1]) != context_length:
-				decoded_string = tokenizer.decode(
-					chunks[-1], 
-					skip_special_tokens=True
-				)
-				chunks[-1] = tokenizer.encode(
-					decoded_string, 
-					add_special_tokens=True, 
+		if splitter == "":
+			print("In character level splitter.")
+
+		# Iterate through the text chunks.
+		for chunk, offset in text_chunks:
+			# Remove the current chunk from the text chunks list.
+			text_chunks.remove((chunk, offset))
+		
+			# Tokenize the text chunk (don't worry about padding yet).
+			tokens = tokenizer.encode(chunk, add_special_tokens=False)
+
+			# Check the length of the raw tokenization.
+			if len(tokens) > context_length:
+				# For token sequences longer than the set context
+				# length, split the current text chunk with the current
+				# splitter and add those splits to the end of the text
+				# chunks list.
+
+				if splitter not in [" ", ""]:
+					# Normal split with a typical splitter.
+					# next_chunks += chunk.split(splitter)
+					next_chunks += [
+						(
+							chunk_split, 
+							offset + chunk.index(chunk_split)
+						)
+						for chunk_split in chunk.split(splitter)
+					]
+				elif splitter == " ":
+					# Split on word level.
+					word_chunks = chunk.split(splitter)
+
+					# Extra preprocessing. For each word, try and group
+					# as many words together as possible.
+					half_len = len(word_chunks) // 2
+
+					if half_len > 0:
+						# If the number of characters in the current
+						# chunk is greater than 1, divide the chunk in
+						# half and add those two halfs to the end of
+						# the text chunks list.
+						# text_chunks += [
+						# 	chunk[:half_len], chunk[half_len:]
+						# ]
+						text_chunks += [
+							(" ".join(chunk[:half_len]), offset + 0), 
+							(" ".join(chunk[half_len:]), offset + half_len)
+						]
+					else:
+						# Otherwise (the number of characters in the
+						# current chunk is less than 2), add the chunk
+						# characters to the end of the text chunks
+						# list.
+						# text_chunks += word_chunks
+						text_chunks += [
+							(word, offset + idx) 
+							for word, idx in enumerate(word_chunks)
+						]
+						# next_chunks += word_chunks
+				else:
+					# Split on character level.
+					chunk_chars = list(chunk)
+					half_len = len(chunk) // 2
+
+					# NOTE:
+					# Append subsequent chunks to the current text
+					# chunks list instead of the next chunks list
+					# because the character level splitter ("") is the
+					# last splitter. There will be no subsequent split
+					# so the chunks will continue to be processed by
+					# this splitter until the text chunks list is
+					# empty.
+
+					if half_len > 0:
+						# If the number of characters in the current
+						# chunk is greater than 1, divide the chunk in
+						# half and add those two halfs to the end of
+						# the text chunks list.
+						# text_chunks += [
+						# 	chunk[:half_len], chunk[half_len:]
+						# ]
+						text_chunks += [
+							(chunk[:half_len], offset + 0), 
+							(chunk[half_len:], offset + half_len)
+						]
+					else:
+						# Otherwise (the number of characters in the
+						# current chunk is less than 2), add the chunk
+						# characters to the end of the text chunks
+						# list.
+						# text_chunks += chunk_chars
+						text_chunks += [
+							(char, offset + idx) 
+							for char, idx in enumerate(chunk_chars)
+						]
+						# next_chunks += chunk_chars
+			else:
+				# For token sequences less than or equal to the set
+				# context length, re-tokenize the sequence (this time
+				# with padding turned on).
+				tokens = tokenizer.encode(
+					chunk, 
+					add_special_tokens=False, 
 					padding="max_length"
 				)
-			
-			token_chunks += chunks
-		else:
-			# The raw text was tokenized exactly to the context length.
-			token_chunks.append(tokens)
 
-	# Return the list of token chunks.
-	return token_chunks
+				# Capture the metadata of the text chunk as it relates
+				# to the original article's text.
+				text_idx = article_text.index(chunk)
+				text_len = len(chunk)
+
+				# Append that text chunk's token sequence and metadata
+				# to the metadata list.
+				metadata.append({
+					# "tokens": tokens, # TODO: Uncomment
+					"text_idx": text_idx,
+					"text_len": text_len
+				})
+
+		# Set the text chunks list to the next chunks list.
+		text_chunks = next_chunks 
+
+	assert len(text_chunks) == 0, "Expected all text chunks to be processed."
+	# print(f"text chunks len {len(text_chunks)}")
+
+	# Return the metadata.
+	return metadata
 
 
 def load_model(config: Dict, device="cpu") -> Tuple[AutoTokenizer, AutoModel]:
