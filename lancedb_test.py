@@ -16,11 +16,6 @@ import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel, pipeline
 
-# currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-# parentdir = os.path.dirname(currentdir)
-parent_dir = os.path.abspath("../preprocess.py")
-sys.path.append(parent_dir)
-
 from preprocess import process_page, load_model, vector_preprocessing
 
 

@@ -1,5 +1,11 @@
+# env
 /__pycache__
 /wiki-search
+
+# embedding models
 /bert*
 /hkunlp*
 /sentence-transformers*
+
+# xml test file(s)
+*.xml

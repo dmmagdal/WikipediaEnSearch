@@ -102,9 +102,18 @@ word: [document_1_path, document_2_path, ... , document_n_path]
 ```
      - Store the above metadata into dictionaries and save them to JSON files.
  - For Vector search with language model:
-     - Preprocessing"
-         - Split the text on "\n" (newline) characters.
-     - Embed the texts with the language model, maximizing the number of tokens that can fit within the model's context window. You will want to merge texts together (include the "\n" newline character you removed when you do).
+     - Preprocessing
+         - Created a preprocessor the recursively splits the text into paragraphs, words, and characters.
+             - Paragraph splitter splits on newline characters ("\n\n", "\n").
+             - Word splitter splits on white space characters (" ").
+             - Character splitter splits on characters ("" or empty strin).
+         - When a text segment is too large for the embedding model, it is either passed to the next level splitter or further broken down on the current splitter.
+         - Inspiration for the design of the recursive splitter is the Langchain `RecursiveTextCharacterSplitter`.
+             - All links below are for v0.1 of Langchain.
+             - Langchain RecursiveCharacterTextSplitter in the [documentation](https://python.langchain.com/v0.1/docs/modules/data_connection/document_transformers/recursive_text_splitter/)
+             - Langchain RecursiveCharacterTextSplitter implementation on [github](https://github.com/langchain-ai/langchain/blob/master/libs/text-splitters/langchain_text_splitters/character.py)
+         - Preprocessor captures subtext token sequence, index with respect to original text, and subtext length along with the article's SHA1 hash and the xml file it came from.
+     - Embed the texts with the language model, maximizing the number of tokens that can fit within the model's context window. The subtext metadata for each embedded chunk will come in handy for retrieval.
      - Store the embedding to the vector database. Keep track of the index of that embedding as well as the text and article that it came from.
          - Store this metadata (database index, article file, text slice indices) in a JSON dictionary.
          - 
