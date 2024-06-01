@@ -295,20 +295,22 @@ def bow_preprocessing(text: str, return_word_freq: bool=False):
 	return tuple([bag_of_words, word_freqs])
 
 
-def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokenizer) -> List[List[int]]:
+def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokenizer) -> List[Dict]:
 	'''
 	Preprocess the text to yield a list of chunks of the tokenized 
 		text. Each chunk is the longest possible set of text that can 
 		be passed to the embedding model tokenizer.
-	@param: text (str), the raw text that is to be processed into a bag
-		of words.
+	@param: text (str), the raw text that is to be processed for
+		storing to vector database.
 	@param: config (dict), the configuration parameters. These 
 		parameters detail important parts of the vector preprocessing
 		such as context length.
 	@param: tokenizer (AutoTokenizer), the tokenizer for the embedding
 		model.
-	@return: returns a List[List[int]] of the text tokenized and sliced
-		into chunks that are acceptable size to the embedding model.
+	@return: returns a List[Dict] of the text metadata. This metadata 
+		includes the split text's token sequence, index (with respect
+		to the input text), and length of the text split for each split
+		in the text.
 	'''
 	# Pull the model's context length and overlap token count from the
 	# configuration file.
@@ -321,155 +323,248 @@ def vector_preprocessing(article_text: str, config: Dict, tokenizer: AutoTokeniz
 	# length.
 	# assert overlap < context_length, f"Number of overlapping tokens ({overlap}) must NOT exceed the model context length ({context_length})"
 
-	# Splitting scheme:
-	# 1) Split into paragraphs (split by newline "\n" character).
-	# 2) Tokenize each paragraph
-	#	a) if token sequence is too shoort, pad.
-	#	b) if token sequence is too long, split up the tokens into 
-	#		chunks with some overlap.
+	# NOTE:
+	# Initially there were plans to have text tokenized and chunked by
+	# token (chunk lengths would be context_length with overlap number
+	# of tokens overlapping). This proved to be more complicated than
+	# thought because it required tokens be decoded back to the
+	# original text exactly, something that is left up to the
+	# implementation of each model's tokenizer. To allow for support of
+	# so many models, there had to be a more general method to handle
+	# text tokenization while keeping track of the original text
+	# metadata. 
 
-	splitters = ["\n\n", "\n", " ", ""] # Same as default on RecursiveCharacterTextSplitter
-	text_chunks = [(article_text, 0)]
+	# NOTE:
+	# Splitting scheme:
+	# 1) Split into paragraphs (split by newline ("\n\n", "\n") 
+	#	characters). This is covered by the high_level_split() 
+	#	recursive function.
+	# 2) Split paragraphs that are too long (split by " " (word level 
+	#	split) and "" (character level split)). This is covered by the
+	#	low_level_split() recursive function that is called by the
+	#	high_level_split() recursive function when such is the case.
+
+	# Initialize splitters list and text metadata list. The splitters
+	# are the same as default on RecursiveCharacterTextSplitter.
+	splitters = ["\n\n", "\n", " ", ""] 
 	metadata = []
 
-	# Initialize the list of chunks that will be processed by the next
-	# splitter.
-	next_chunks = []
+	# Add to the metadata list by passing the text to the high level
+	# recursive splitter function.
+	metadata += high_level_split(
+		article_text, 0, tokenizer, context_length, splitters
+	)
+	
+	# Return the text metadata.
+	return metadata
 
-	# Iterate through the splitters.
-	for splitter in splitters:
-		# Reset the next splitter chunks list.
-		next_chunks = []
 
-		print(f"Splitter {splitter}")
-		print(f"Text chunks ({len(text_chunks)})")
-		for text, offset in text_chunks:
-			print(f"offset {offset}, text len {len(text)},  text: {text}")
+def high_level_split(text: str, offset: int, tokenizer: AutoTokenizer, context_length: int, splitters: List[str]) -> List[Dict]:
+	'''
+	(Recursively) split the text into paragraphs and extract the 
+		metadata from the text slices of the input text. If the 
+		paragraphs are too large, call the low_level_split() recursive 
+		function and extract the metadata from there too.
+	@param: text (str), the text that is to be processed for storing to
+		vector database.
+	@param: offset (int), the index of the input text with respect to
+		the original text.
+	@param: tokenizer (AutoTokenizer), the tokenizer for the embedding
+		model.
+	@param: context_length (int), the maximum number of tokens 
+		supported by the model. This helps us chunk the text if the 
+		tokenized output is "too long".
+	@param: splitters (List[str]), the list of strings that will be 
+		used to split the text. For this function, we expect the 
+		"top-most" strings to be either in the set ("\n\n", "\n").
+	@return: returns a List[Dict] of the text metadata. This metadata 
+		includes the split text's token sequence, index (with respect
+		to the input text), and length of the text split for each split
+		in the text.
+	'''
+	# Check that the splitters is non-empty.
+	assert len(splitters) >= 1, "Expected high_level_split() argument 'splitters' to be populated"
+	
+	# Check the "top"/"first" splitter. Make sure that it is for
+	# splitting the text at the paragraph level.
+	valid_splitters = ["\n\n", "\n"]
+	splitters_copy = copy.deepcopy(splitters)
+	splitter = splitters_copy.pop(0)
+	assert splitter in valid_splitters, "Expected first element for high_level_split() argument 'splitter' to be either '\\n\\n' or '\\n'"
 
-		if splitter == "":
-			print("In character level splitter.")
+	# Initialize the metadata list.
+	metadata = []
 
-		# Iterate through the text chunks.
-		for chunk, offset in text_chunks:
-			# Remove the current chunk from the text chunks list.
-			text_chunks.remove((chunk, offset))
-		
-			# Tokenize the text chunk (don't worry about padding yet).
-			tokens = tokenizer.encode(chunk, add_special_tokens=False)
+	# Split the text.
+	text_splits = text.split(splitter)
 
-			# Check the length of the raw tokenization.
-			if len(tokens) > context_length:
-				# For token sequences longer than the set context
-				# length, split the current text chunk with the current
-				# splitter and add those splits to the end of the text
-				# chunks list.
+	# Iterate through the list 
+	for split in text_splits:
+		# Skip the split if it is an empty string.
+		if split == "":
+			continue
 
-				if splitter not in [" ", ""]:
-					# Normal split with a typical splitter.
-					# next_chunks += chunk.split(splitter)
-					next_chunks += [
-						(
-							chunk_split, 
-							offset + chunk.index(chunk_split)
-						)
-						for chunk_split in chunk.split(splitter)
-					]
-				elif splitter == " ":
-					# Split on word level.
-					word_chunks = chunk.split(splitter)
+		# Get the split metadata (index with respect to original text 
+		# plus offset and split length).
+		split_idx = text.index(split) + offset
+		split_len = len(split)
 
-					# Extra preprocessing. For each word, try and group
-					# as many words together as possible.
-					half_len = len(word_chunks) // 2
+		# Tokenize the split.
+		tokens = tokenizer.encode(split, add_special_tokens=False)
 
-					if half_len > 0:
-						# If the number of characters in the current
-						# chunk is greater than 1, divide the chunk in
-						# half and add those two halfs to the end of
-						# the text chunks list.
-						# text_chunks += [
-						# 	chunk[:half_len], chunk[half_len:]
-						# ]
-						text_chunks += [
-							(" ".join(chunk[:half_len]), offset + 0), 
-							(" ".join(chunk[half_len:]), offset + half_len)
-						]
-					else:
-						# Otherwise (the number of characters in the
-						# current chunk is less than 2), add the chunk
-						# characters to the end of the text chunks
-						# list.
-						# text_chunks += word_chunks
-						text_chunks += [
-							(word, offset + idx) 
-							for word, idx in enumerate(word_chunks)
-						]
-						# next_chunks += word_chunks
-				else:
-					# Split on character level.
-					chunk_chars = list(chunk)
-					half_len = len(chunk) // 2
-
-					# NOTE:
-					# Append subsequent chunks to the current text
-					# chunks list instead of the next chunks list
-					# because the character level splitter ("") is the
-					# last splitter. There will be no subsequent split
-					# so the chunks will continue to be processed by
-					# this splitter until the text chunks list is
-					# empty.
-
-					if half_len > 0:
-						# If the number of characters in the current
-						# chunk is greater than 1, divide the chunk in
-						# half and add those two halfs to the end of
-						# the text chunks list.
-						# text_chunks += [
-						# 	chunk[:half_len], chunk[half_len:]
-						# ]
-						text_chunks += [
-							(chunk[:half_len], offset + 0), 
-							(chunk[half_len:], offset + half_len)
-						]
-					else:
-						# Otherwise (the number of characters in the
-						# current chunk is less than 2), add the chunk
-						# characters to the end of the text chunks
-						# list.
-						# text_chunks += chunk_chars
-						text_chunks += [
-							(char, offset + idx) 
-							for char, idx in enumerate(chunk_chars)
-						]
-						# next_chunks += chunk_chars
+		if len(tokens) <= context_length:
+			# If the token sequence is less than or equal to the 
+			# context length, tokenize the text split again (this time
+			# with padding), and add the entry to the metadata.
+			tokens = tokenizer.encode(
+				split, 
+				add_special_tokens=False, 
+				padding="max_length"
+			)
+			metadata.append({
+				"tokens": tokens,
+				"text_idx": split_idx,
+				"text_len": split_len
+			})
+		else:
+			# If the token sequence is greater than the context length,
+			# pass the text over to the next splitter. Check the next
+			# splitter and use the appropriate function.
+			next_splitter = splitters_copy[0]
+			if next_splitter in valid_splitters:
+				metadata += high_level_split(
+					split, 
+					split_idx, 
+					tokenizer, 
+					context_length, 
+					splitters_copy
+				)
 			else:
-				# For token sequences less than or equal to the set
-				# context length, re-tokenize the sequence (this time
-				# with padding turned on).
-				tokens = tokenizer.encode(
-					chunk, 
-					add_special_tokens=False, 
-					padding="max_length"
+				metadata += low_level_split(
+					split, 
+					split_idx, 
+					tokenizer, 
+					context_length, 
+					splitters_copy
 				)
 
-				# Capture the metadata of the text chunk as it relates
-				# to the original article's text.
-				text_idx = article_text.index(chunk)
-				text_len = len(chunk)
+	# Return the metadata.
+	return metadata
 
-				# Append that text chunk's token sequence and metadata
-				# to the metadata list.
-				metadata.append({
-					# "tokens": tokens, # TODO: Uncomment
-					"text_idx": text_idx,
-					"text_len": text_len
-				})
 
-		# Set the text chunks list to the next chunks list.
-		text_chunks = next_chunks 
+def low_level_split(text: str, offset: int, tokenizer: AutoTokenizer, context_length: int, splitters: List[str]) -> List[Dict]:
+	'''
+	(Recursively) split the text into words or characters and extract
+		the metadata from the text slices of the input text. If the 
+		splits are too large, recursively call the function until the 
+		text becomes manageable.
+	@param: text (str), the text that is to be processed for storing to
+		vector database.
+	@param: offset (int), the index of the input text with respect to
+		the original text.
+	@param: tokenizer (AutoTokenizer), the tokenizer for the embedding
+		model.
+	@param: context_length (int), the maximum number of tokens 
+		supported by the model. This helps us chunk the text if the 
+		tokenized output is "too long".
+	@param: splitters (List[str]), the list of strings that will be 
+		used to split the text. For this function, we expect the 
+		"top-most" strings to be either in the set (" ", "").
+	@return: returns a List[Dict] of the text metadata. This metadata 
+		includes the split text's token sequence, index (with respect
+		to the input text), and length of the text split for each split
+		in the text.
+	'''
+	# Check that the splitters is non-empty.
+	assert len(splitters) >= 1, "Expected low_level_split() argument 'splitters' to be populated"
+	
+	# Check the "top"/"first" splitter. Make sure that it is for
+	# splitting the text at the paragraph level.
+	valid_splitters = [" ", ""]
+	splitters_copy = copy.deepcopy(splitters)	# deep copy because this variable is modified
+	splitter = splitters_copy.pop(0)
+	assert splitter in valid_splitters, "Expected first element for low_level_split() argument 'splitter' to be either ' ' or ''"
 
-	assert len(text_chunks) == 0, "Expected all text chunks to be processed."
-	# print(f"text chunks len {len(text_chunks)}")
+	# Initialize the metadata list.
+	metadata = []
+
+	# Initialize a boolean to determine if the function needs to use
+	# the next splitter in the recursive call or stick with the current
+	# one. Initialize to True.
+	use_next_spitter = True
+
+	# Split the text.
+	if splitter != "":
+		# Split text "normally" (splitter is not an empty string "").
+		text_splits = text.split(splitter)
+	else:
+		# Split text here if the splitter is "". The empty string "" is
+		# not recognized as a valid text separator.
+		text_splits = list(text)
+
+	# Aggregate the splits according to the splitter. Current
+	# aggregation strategy is to chunk the splits by half.
+	half_len = len(text_splits) // 2
+	if half_len > 0:	# Same as len(text_splits) > 1
+		# This aggregation only takes affect if the number of items
+		# resulting from the split is more than 1. Otherwise, there is
+		# no need to aggregate.
+		text_splits = [
+			splitter.join(text_splits[:half_len]),
+			splitter.join(text_splits[half_len:]),
+		]
+
+		# Flip boolean to False while the split list is still longer
+		# than one item.
+		use_next_spitter = False
+
+	# Iterate through the list 
+	for split in text_splits:
+		# Skip the split if it is an empty string.
+		if split == "":
+			continue
+
+		# Get the split metadata (index with respect to original text 
+		# plus offset and split length).
+		split_idx = text.index(split) + offset
+		split_len = len(split)
+
+		# Tokenize the split.
+		tokens = tokenizer.encode(split, add_special_tokens=False)
+
+		if len(tokens) <= context_length:
+			# If the token sequence is less than or equal to the 
+			# context length, tokenize the text split again (this time
+			# with padding), and add the entry to the metadata.
+			tokens = tokenizer.encode(
+				split, 
+				add_special_tokens=False, 
+				padding="max_length"
+			)
+			metadata.append({
+				"tokens": tokens,
+				"text_idx": split_idx,
+				"text_len": split_len
+			})
+		else:
+			# If the token sequence is greater than the context length,
+			# pass the text over to the next splitter. Since we are
+			# already on the low level split function, we'll just
+			# recursively call the function again.
+			if not use_next_spitter:
+				# If the boolean around using the next splitter is
+				# False, re-insert the current splitter to the
+				# beginning of the splitters list before it is passed
+				# down to the recursive function call.
+				splitters_copy.insert(0, splitter)
+
+			metadata += low_level_split(
+				split, 
+				split_idx, 
+				tokenizer, 
+				context_length, 
+				splitters_copy
+			)
 
 	# Return the metadata.
 	return metadata
@@ -698,15 +793,25 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 			# initialized.
 			assert None not in [tokenizer, model], "Model tokenizer and model is expected to be initialized for vector embeddings preprocessing."
 
-			# Pass the article 
-			token_chunks = vector_preprocessing(
+			# Pass the article to break the text into manageable chunks
+			# for the embedding model. This will yield the (padded) 
+			# token sequences for each chunk as well as the chunk 
+			# metadata (such as the respective index in the original
+			# text for each chunk and the length of the chunk).
+			chunk_metadata = vector_preprocessing(
 				article_text_v_db, config, tokenizer
 			)
-			pass
 
-			# Embed chunks and write them to vector storage.
-			# for chunk in xml_chunks:
-			# 	pass
+			# Update the metadata for each chunk with the respective
+			# SHA1 and filename.
+			chunk_metadata = [
+				data.update({"file": file, "sha1": article_sha1})
+				for data in chunk_metadata
+			]
+
+			# Embed each chunk and write them to vector storage.
+			for chunk in chunk_metadata:
+				pass
 	
 	# Return the mappings.
 	return doc_to_word, word_to_doc, chunk_to_doc
