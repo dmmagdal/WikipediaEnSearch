@@ -38,9 +38,9 @@ def main():
 	# Load tokenizer and model.
 	device = "mps"
 	tokenizer, model = load_model(config, device)
-	pipe = pipeline(
-		"feature-extraction", model=model, tokenizer=tokenizer
-	)
+	# pipe = pipeline(
+	# 	"feature-extraction", model=model, tokenizer=tokenizer
+	# )
 
 	# Test tokenization encoding & decoding with and without padding.
 	text = "hello"
@@ -55,10 +55,10 @@ def main():
 		padding="max_length",
 		# return_tensors="pt"
 	) # See https://huggingface.co/docs/transformers/en/pad_truncation#padding-and-truncation and https://huggingface.co/docs/tokenizers/v0.13.4.rc2/en/api/tokenizer#tokenizers.Tokenizer.encode
-	print(f"unpadded len {len(unpadded_tokens)}")
-	print(f"padded len {len(padded_tokens)}")
-	print(padded_tokens)
-	print(unpadded_tokens)
+	# print(f"unpadded len {len(unpadded_tokens)}")
+	# print(f"padded len {len(padded_tokens)}")
+	# print(padded_tokens)
+	# print(unpadded_tokens)
 	assert len(unpadded_tokens) < len(padded_tokens), "Padded token sequence expected to be longer than unpadded"
 
 	unpadded_text = tokenizer.decode(unpadded_tokens)
@@ -66,8 +66,8 @@ def main():
 		padded_tokens, 
 		skip_special_tokens=True
 	) # See https://huggingface.co/docs/tokenizers/v0.13.4.rc2/en/api/tokenizer#tokenizers.Tokenizer.decode
-	print(f"unpadded text ({len(unpadded_text)}): {unpadded_text}")
-	print(f"padded text ({len(padded_text)}): {padded_text}")
+	# print(f"unpadded text ({len(unpadded_text)}): {unpadded_text}")
+	# print(f"padded text ({len(padded_text)}): {padded_text}")
 	assert unpadded_text == padded_text, "Decoded texts were expected to be the same"
 
 	# NOTE:

@@ -114,6 +114,8 @@ word: [document_1_path, document_2_path, ... , document_n_path]
              - Langchain RecursiveCharacterTextSplitter implementation on [github](https://github.com/langchain-ai/langchain/blob/master/libs/text-splitters/langchain_text_splitters/character.py)
          - Preprocessor captures subtext token sequence, index with respect to original text, and subtext length along with the article's SHA1 hash and the xml file it came from.
      - Embed the texts with the language model, maximizing the number of tokens that can fit within the model's context window. The subtext metadata for each embedded chunk will come in handy for retrieval.
+         - Generate embeddings with BERT example ([geeksforgeeks](https://www.geeksforgeeks.org/how-to-generate-word-embedding-using-bert/))
+             - Primarily good for understanding how to generate sentence embeddings (what we want). Concepts still apply to using other models, not just BERT.
      - Store the embedding to the vector database. Keep track of the index of that embedding as well as the text and article that it came from.
          - Store this metadata (database index, article file, text slice indices) in a JSON dictionary.
          - 
@@ -228,10 +230,14 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - using sentencetransformers at huggingface [documentation](https://huggingface.co/docs/hub/en/sentence-transformers)
      - loading models direcdtly to gpu [stackoverflow](https://stackoverflow.com/questions/77237818/how-to-load-a-huggingface-pretrained-transformer-model-directly-to-gpu)
      - estimate model memory usage [documentation](https://huggingface.co/docs/accelerate/en/usage_guides/model_size_estimator)
+     - tokenizer encode text [documentation](https://huggingface.co/docs/tokenizers/v0.13.4.rc2/en/api/tokenizer#tokenizers.Tokenizer.encode)
+     - tokenizer decode text [documentation](https://huggingface.co/docs/tokenizers/v0.13.4.rc2/en/api/tokenizer#tokenizers.Tokenizer.decode)
+     - tokenizer padding text [documentation](https://huggingface.co/docs/transformers/en/pad_truncation#padding-and-truncation)
  - Sentence Transformers
      - sentence transformers in the huggingface hub [blog post](https://huggingface.co/blog/sentence-transformers-in-the-hub)
      - [documentation](https://www.sbert.net/)
      - [github](https://github.com/UKPLab/sentence-transformers)
+     - semantic search [sbert documentation](https://www.sbert.net/examples/applications/semantic-search/README.html)
  - Documentation of native python module used:
      - [argparse](https://docs.python.org/3.9/library/argparse.html)
      - [copy](https://docs.python.org/3.9/library/copy.html)
