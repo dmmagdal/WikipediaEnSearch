@@ -809,9 +809,36 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 				for data in chunk_metadata
 			]
 
-			# Embed each chunk and write them to vector storage.
-			for chunk in chunk_metadata:
-				pass
+			# Disable gradients.
+			with torch.no_grad():
+				# Embed each chunk and update the metadata.
+				for idx, chunk in enumerate(chunk_metadata):
+					# Get original text chunk from text.
+					text_idx = chunk["text_idx"]
+					text_len = chunk["text_len"]
+					text_chunk = article_text_v_db[text_idx: text_idx + text_len]
+
+					# Pass original text chunk to tokenizer. Ensure the
+					# data is passed to the appropriate (hardware)
+					# device.
+					output = model(
+						**tokenizer(
+							text_chunk,
+							add_special_tokens=False,
+							padding="max_length",
+							return_tensors="pt"
+						).to(device)
+					)
+
+					# Compute the embedding by taking the mean of the
+					# last hidden state tensor across the seq_len axis.
+					embedding = output[0].mean(dim=1)
+
+					# Update the chunk dictionary with the embedding
+					# and set the value of that chunk in the metadata
+					# list to the (updated) chunk.
+					chunk.update({"embedding": embedding})
+					chunk_metadata[idx] = chunk
 	
 	# Return the mappings.
 	return doc_to_word, word_to_doc, chunk_to_doc

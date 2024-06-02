@@ -4,8 +4,8 @@
 # Windows/MacOS/Linux
 
 
+import copy
 import os
-import inspect
 import json
 import shutil
 import sys
@@ -70,6 +70,12 @@ def main():
 	print(f"padded text ({len(padded_text)}): {padded_text}")
 	assert unpadded_text == padded_text, "Decoded texts were expected to be the same"
 
+	# NOTE:
+	# Current preprocessing (text chunking + feature extractioon/
+	# embeddings) on M2 Macbook Pro is around 26 minutes for the slice
+	# of pages that are currently in use. The script is using Pytorch's
+	# MPS backend for Apple Silicon for the sake of faster embedding.
+
 	# Iterate through each page and apply the processing for vector
 	# data.
 	for page in tqdm(pages):
@@ -87,8 +93,59 @@ def main():
 
 		# Tokenize the text and split the tokens into chunks
 		# appropriately sized for the model.
-		token_chunks = vector_preprocessing(text, config, tokenizer)
-		# print(json.dumps(token_chunks, indent=4))
+		chunk_metadata = vector_preprocessing(text, config, tokenizer)
+		# print(json.dumps(chunk_metadata, indent=4))
+
+		# Embed the text chunks.
+		for chunk in chunk_metadata:
+			# Get original text.
+			text_idx = chunk["text_idx"]
+			text_len = chunk["text_len"]
+			text_chunk = text[text_idx: text_idx + text_len]
+			# print(text_chunk)
+			
+			# Pass text to feature extraction pipeline.
+			# output = pipe(
+			# 	text_chunk, 
+			# 	add_special_tokens=False, 
+			# 	padding="max_length", 
+			# 	return_tensors="pt"
+			# )
+			# Returns a list of only 1 tensor of shape (seq_len,
+			# emb_dim) where seq_len is the tokenized sequence length
+			# unpadded (despite trying to specify padding).
+			# print(output[0].shape)
+
+			# Pass text to tokenizer and then to model. Make sure to
+			# disable gradients and pass the tokenized text to the
+			# appropriate (hardware) device.
+			with torch.no_grad():
+				output = model(
+					**tokenizer(
+						text_chunk, 
+						add_special_tokens=False, 
+						padding="max_length", 
+						return_tensors="pt"
+					).to(device)
+				)
+				# Returns a list of only 2 tensors. The first tensor is
+				# the last hidden state with shape (batch_size,
+				# seq_len, emb_dim) where seq_len is the tokenized
+				# sequence length padded (as specified above in the
+				# call to the tokenizer above). The second tensor is
+				# the pooled output with shape (batch_size, emb_dim).
+				# print(output)
+				# print(output[0].shape)
+				# print(output[1].shape)
+
+				# Take the average of the embedding across the seq_len
+				# dimension to get the embedding (results in the tensor
+				# of shape (batch_size, emb_dim)). Note that this is
+				# NOT the equivalent to the pooled output tensor.
+				embedding = output[0].mean(dim=1)
+				# print(embedding.shape)
+				# print(torch.equal(embedding, output[1]))
+				# exit()
 
 	# Exit the program.
 	exit(0)
