@@ -802,17 +802,14 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 				article_text_v_db, config, tokenizer
 			)
 
-			# Update the metadata for each chunk with the respective
-			# SHA1 and filename.
-			chunk_metadata = [
-				data.update({"file": file, "sha1": article_sha1})
-				for data in chunk_metadata
-			]
-
 			# Disable gradients.
 			with torch.no_grad():
 				# Embed each chunk and update the metadata.
 				for idx, chunk in enumerate(chunk_metadata):
+					# Update/add the metadata for the source filename
+					# and article SHA1.
+					chunk.update({"file": file, "sha1": article_sha1})
+
 					# Get original text chunk from text.
 					text_idx = chunk["text_idx"]
 					text_len = chunk["text_len"]
