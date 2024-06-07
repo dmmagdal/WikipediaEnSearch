@@ -76,6 +76,8 @@ def main():
 	# of pages that are currently in use. The script is using Pytorch's
 	# MPS backend for Apple Silicon for the sake of faster embedding.
 
+	vector_metadata = []
+
 	# Iterate through each page and apply the processing for vector
 	# data.
 	for page in tqdm(pages):
@@ -96,8 +98,12 @@ def main():
 		chunk_metadata = vector_preprocessing(text, config, tokenizer)
 		# print(json.dumps(chunk_metadata, indent=4))
 
-		# Embed the text chunks.
-		for chunk in chunk_metadata:
+		# Complete the rest of the preprocessing (embed the text
+		# chunks) and update the metadata.
+		for idx, chunk in enumerate(chunk_metadata):
+			# Update the chunk metadata with the file and article SHA1.
+			chunk.update({"SHA1": sha, "file": file})
+
 			# Get original text.
 			text_idx = chunk["text_idx"]
 			text_len = chunk["text_len"]
@@ -146,6 +152,71 @@ def main():
 				# print(embedding.shape)
 				# print(torch.equal(embedding, output[1]))
 				# exit()
+			
+			# Update the chunk metadata with the embedding.
+			chunk.update({"embedding": embedding})
+
+			# Update the metadata with the new chunk.
+			chunk_metadata[idx] = chunk
+
+		# Append the metadata to the list.
+		vector_metadata.append(chunk_metadata)
+			
+	# Get an idea of the size of the metadata.
+	size_in_bytes = sys.getsizeof(vector_metadata)
+	GB_SIZE = 1024 * 1024 * 1024
+	MB_SIZE = 1024 * 1024
+	KB_SIZE = 1024
+	size_in_gb = size_in_bytes / GB_SIZE
+	size_in_mb = size_in_bytes / MB_SIZE
+	size_in_kb = size_in_bytes / KB_SIZE
+	if size_in_gb > 1:
+		print(f"Vector metadata has reached over 1GB in size ({round(size_in_gb, 2)} GB)")
+	elif size_in_mb > 1: 
+		print(f"Vector metadata has reached over 1MB in size ({round(size_in_mb, 2)} MB)")
+	elif size_in_kb > 1: 
+		print(f"Vector metadata has reached over 1KB in size ({round(size_in_kb, 2)} KB)")
+	print(f"Size of vector metadata (in bytes): {size_in_bytes}")
+	print(f"Number of vectors in the metadata: {len(vector_metadata)}")
+
+	# NOTE:
+	# 1,000 articles from 1 file generated over 8.65 KB of data. Each
+	# file contains 150,000 artiles and file size averages around 750
+	# MB:
+	#
+	# ~10 KB/article x 150,000 artices/file = 1,500,000 KB/file
+	#                                       = 1,465 MB/file 
+	#                  file vector metadata = 1.43 GB/file 
+	# 
+	# It is important to also consider how the metadata in each entry
+	# of the vector metadata list is confined to a set size/limit.
+	# Source file, article SHA1, embeddings, text chunk index, and text
+	# chunk length are all confined to some defined upper limit
+	# (depending on the attribute). For instance, the BERT embeddings 
+	# will always be a 32-bit float of size (786), meaning there are
+	# 786 32-bit float values in the embedding at all times. The only
+	# thing that will affect the scaling of this data is the amount of
+	# times the data is chunked (which usually corresponds to article
+	# length but can also be influenced by unusually long words in the
+	# text).
+	# 
+	# if the goal is to keep each index or table under a set size of 1
+	# GB, I need to figure out how to chunk either the index itself or
+	# the tables and iterate through those chunks to conduct a fast
+	# search. 
+	# Link to lancedb documentation: https://lancedb.github.io/lancedb/basic/
+
+	# Load the data into a vector DB (lanceDB).
+	# uri = "/data/lance_db_test"
+	# db = lancedb.connect(uri)
+	# tbl = db.create_table("test_table", data=vector_metadata)
+	# open_tbl = db.open_table("test_table")
+	# tbl_names = db.table_names()
+	# tbl.add(data=vector_metadata)
+	# tbl.search(vector_metadata[0]["embedding"]).limit(2)
+	# tbl.delete('"SHA1" = {vector_metadata[-1]['SHA1']}')
+	# db.drop_table("test_table")
+
 
 	# Exit the program.
 	exit(0)
