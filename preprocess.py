@@ -13,6 +13,7 @@ import multiprocessing as mp
 import os
 import shutil
 import string
+import sys
 from typing import List, Dict, Tuple
 
 from bs4 import BeautifulSoup
@@ -637,25 +638,25 @@ def load_model(config: Dict, device="cpu") -> Tuple[AutoTokenizer, AutoModel]:
 	return tokenizer, model
 
 
-def merge_mappings(results: List[List[Dict]]) -> Tuple[Dict]:
+def merge_mappings(results: List[List]) -> Tuple[Dict]:
 	'''
 	Merge the results of processing each article in the file from the 
 		multiprocessing pool.
-	@param: results (list[list[dict]]), the list containing the outputs
-		of the processing function for each processor.
+	@param: results (list[list]), the list containing the outputs of
+		the processing function for each processor.
 	@return: returns a tuple of the same processing outputs now 
 		aggregated together.
 	'''
 	# Initialize aggregate variables.
 	aggr_word_to_doc = dict()
 	aggr_doc_to_word = dict()
-	aggr_chunk_to_doc = dict()
+	aggr_vector_metadata = list()
 
 	# Results mappings shape (num_processors, tuple_len). Iterate
 	# through each result and update the aggregate variables.
 	for result in results:
 		# Unpack the result tuple.
-		word_to_doc, doc_to_word, chunk_to_doc = result
+		word_to_doc, doc_to_word, vector_metadata = result
 
 		# Iteratively update the word to document dictionary.
 		for key, value in word_to_doc.items():
@@ -669,8 +670,12 @@ def merge_mappings(results: List[List[Dict]]) -> Tuple[Dict]:
 		# entirety of the results is unique.
 		aggr_doc_to_word.update(doc_to_word)
 
+		# Update the list keeping track of the the vectors and
+		# associated metadata.
+		aggr_vector_metadata += vector_metadata
+
 	# Return the aggregated data.
-	return aggr_word_to_doc, aggr_doc_to_word, aggr_chunk_to_doc
+	return aggr_word_to_doc, aggr_doc_to_word, aggr_vector_metadata
 
 
 def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[str], num_proc: int=1):
@@ -705,12 +710,12 @@ def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[s
 		results = pool.starmap(process_articles, arg_list)
 
 		# Pass the aggregate results tuple to be merged.
-		word_to_doc, doc_to_word, chunk_to_doc = merge_mappings(
+		word_to_doc, doc_to_word, vector_metadata = merge_mappings(
 			results
 		)
 
 	# Return the different mappings.
-	return word_to_doc, doc_to_word, chunk_to_doc
+	return word_to_doc, doc_to_word, vector_metadata
 
 
 def process_articles(args: Namespace, device: str, file: str, pages_str: List[str]):
@@ -730,7 +735,7 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 	# Initialize local mappings.
 	word_to_doc = dict()
 	doc_to_word = dict()
-	chunk_to_doc = dict()
+	vector_metadata = list()
 
 	# Pass each page string into beautifulsoup.
 	pages = [BeautifulSoup(page, "lxml") for page in pages_str]
@@ -836,9 +841,12 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 					# list to the (updated) chunk.
 					chunk.update({"embedding": embedding})
 					chunk_metadata[idx] = chunk
+				
+			# Add the chunk metadata to the vector metadata.
+			vector_metadata += chunk_metadata
 	
 	# Return the mappings.
-	return doc_to_word, word_to_doc, chunk_to_doc
+	return doc_to_word, word_to_doc, vector_metadata
 
 
 def main() -> None:
@@ -934,6 +942,10 @@ def main() -> None:
 	word_to_doc = dict()
 	doc_to_word = dict()
 
+	# Initialize a list to keep track of the vector embeddings and
+	# associated metadata.
+	vector_metadata = list()
+
 	# NOTE:
 	# Be careful if you are on mac. Because Apple Silicon works off of
 	# the unified memory model, there may be some performance hit for 
@@ -1008,24 +1020,69 @@ def main() -> None:
 			if max_proc > 4:
 				device = "cpu"
 
-			multiprocess_articles(
+			word_to_doc, doc_to_word, vector_metadata =  multiprocess_articles(
 				args, device, file, pages_str, num_proc=max_proc
 			)
 		else:
-			process_articles(args, device, file, pages_str)
+			word_to_doc, doc_to_word, vector_metadata =  process_articles(
+				args, device, file, pages_str
+			)
 
+		# NOTE:
+		# Now have file level metadata for bag-of-words and vector
+		# search.
 
-		# Compute size of mappings.
-		# d2w_size = sys.getsizeof(doc_to_word)
-		# w2d_size = sys.getsizeof(word_to_doc)
+		# TODO:
+		# Delete or comment out the code block around computing the
+		# size of the mappings once reaady for "production". It's just
+		# a tool to help get an idea of running the preprocessing on a
+		# full file (vs lancedb_test.py which did the same thing on a
+		# much smaller subsample of the file data).
 
-		# GB_SIZE = 1024 * 1024 * 1024
-		# if d2w_size // GB_SIZE > 1:
-		# 	print(f"Document to word map has reached over 1GB in size")
-		# 	exit()
-		# elif w2d_size // GB_SIZE > 1:
-		# 	print(f"Word to document map has reached over 1GB in size")
-		# 	exit()
+		###############################################################
+		# COMPUTE SIZE OF MAPPINGS
+		###############################################################
+		d2w_size = sys.getsizeof(doc_to_word)
+		w2d_size = sys.getsizeof(word_to_doc)
+		vm_size = sys.getsizeof(vector_metadata)
+		GB_SIZE = 1024 * 1024 * 1024
+		MB_SIZE = 1024 * 1024
+		KB_SIZE = 1024
+
+		d2w_gb = d2w_size / GB_SIZE
+		d2w_mb = d2w_size / MB_SIZE
+		d2w_kb = d2w_size / KB_SIZE
+		w2d_gb = w2d_size / GB_SIZE
+		w2d_mb = w2d_size / MB_SIZE
+		w2d_kb = w2d_size / KB_SIZE
+		vm_gb = vm_size / GB_SIZE
+		vm_mb = vm_size / MB_SIZE
+		vm_kb = vm_size / KB_SIZE
+		
+		if d2w_gb > 1:
+			print(f"Document to word map has reached over 1GB in size ({round(d2w_gb, 2)} GB)")
+		elif d2w_gb > 1:
+			print(f"Document to word map has reached over 1MB in size ({round(d2w_mb, 2)} MB)")
+		elif d2w_gb > 1:
+			print(f"Document to word map has reached over 1KB in size ({round(d2w_kb, 2)} KB)")
+		print(f"Number of entries in document to word map: {len(list(doc_to_word.keys()))}")
+
+		if w2d_gb > 1:
+			print(f"Word to document map has reached over 1GB in size ({round(w2d_gb, 2)} GB)")
+		elif w2d_mb > 1:
+			print(f"Word to document map has reached over 1MB in size ({round(w2d_mb, 2)} MB)")
+		elif w2d_kb > 1:
+			print(f"Word to document map has reached over 1KB in size ({round(w2d_kb, 2)} KB)")
+		print(f"Number of entries in word to document map: {len(list(word_to_doc.keys()))}")
+
+		if vm_gb > 1:
+			print(f"Vector metadata list has reached over 1GB in size ({round(vm_gb, 2)} GB)")
+		elif vm_mb > 1:
+			print(f"Vector metadata list has reached over 1MB in size ({round(vm_mb, 2)} MB)")
+		elif vm_kb > 1:
+			print(f"Vector metadata list has reached over 1KB in size ({round(vm_kb, 2)} KB)")
+		print(f"Number of entries in vector metadata list: {len(vector_metadata)}")
+
 		exit()
 
 

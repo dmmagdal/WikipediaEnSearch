@@ -34,6 +34,7 @@ def main():
 
 	# Subsample the articles from 150,000 to 1,000 articles.
 	pages = pages[:1_000]
+	# pages = pages[:100]	# subsample 100 to go to vector DB functionalities faster OR run 1,000 subsample on Nvidia GPU
 
 	# Load tokenizer and model.
 	device = "mps"
@@ -76,6 +77,8 @@ def main():
 	# of pages that are currently in use. The script is using Pytorch's
 	# MPS backend for Apple Silicon for the sake of faster embedding.
 
+	# Initialize list to contain all the vector metadata for the texts/
+	# articles parsed.
 	vector_metadata = []
 
 	# Iterate through each page and apply the processing for vector
@@ -159,8 +162,8 @@ def main():
 			# Update the metadata with the new chunk.
 			chunk_metadata[idx] = chunk
 
-		# Append the metadata to the list.
-		vector_metadata.append(chunk_metadata)
+		# Add the metadata to the list.
+		vector_metadata += chunk_metadata
 			
 	# Get an idea of the size of the metadata.
 	size_in_bytes = sys.getsizeof(vector_metadata)
