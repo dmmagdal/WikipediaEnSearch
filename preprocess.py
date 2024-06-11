@@ -836,10 +836,27 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 					# last hidden state tensor across the seq_len axis.
 					embedding = output[0].mean(dim=1)
 
+					# Apply the following transformations to allow the
+					# embedding to be compatible with being stored in 
+					# the vector DB (lancedb):
+					#	1) Send the embedding to CPU (if it's not 
+					#		already there)
+					#	2) Convert the embedding to numpy and flatten 
+					# 		the embedding to a 1D array
+					embedding = embedding.to("cpu")
+					embedding = embedding.numpy()[0]
+
+					# NOTE:
+					# Originally I had embeddings stored into the 
+					# metadata dictionary under the "embedding", key
+					# but lancedb requires the embedding data be under 
+					# the "vector" name.
+
 					# Update the chunk dictionary with the embedding
 					# and set the value of that chunk in the metadata
 					# list to the (updated) chunk.
-					chunk.update({"embedding": embedding})
+					# chunk.update({"embedding": embedding})
+					chunk.update({"vector": embedding})
 					chunk_metadata[idx] = chunk
 				
 			# Add the chunk metadata to the vector metadata.

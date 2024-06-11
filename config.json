@@ -3,7 +3,8 @@
     "bm25_config": {},
     "tf-idf_config": {},
     "vector-search_config": {
-        "model": "bert"
+        "model": "bert",
+        "db_uri": "./vector_data/vector_db"
     },
     "preprocessing": {
         "token_overlap": 64

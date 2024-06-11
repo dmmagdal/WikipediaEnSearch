@@ -34,7 +34,7 @@ def main():
 
 	# Subsample the articles from 150,000 to 1,000 articles.
 	pages = pages[:1_000]
-	# pages = pages[:100]	# subsample 100 to go to vector DB functionalities faster OR run 1,000 subsample on Nvidia GPU
+	pages = pages[:100]	# subsample 100 to go to vector DB functionalities faster OR run 1,000 subsample on Nvidia GPU
 
 	# Load tokenizer and model.
 	device = "mps"
@@ -152,12 +152,23 @@ def main():
 				# of shape (batch_size, emb_dim)). Note that this is
 				# NOT the equivalent to the pooled output tensor.
 				embedding = output[0].mean(dim=1)
+
+				# Apply the following transformations to allow the
+				# embedding to be compatible with being stored in the
+				# vector DB (lancedb):
+				#	1) Send the embedding to CPU (if it's not already 
+				#		there)
+				#	2) Convert the embedding to numpy and flatten the
+				#		embedding to a 1D array
+				embedding = embedding.to("cpu")
+				embedding = embedding.numpy()[0]
 				# print(embedding.shape)
 				# print(torch.equal(embedding, output[1]))
 				# exit()
 			
 			# Update the chunk metadata with the embedding.
-			chunk.update({"embedding": embedding})
+			# chunk.update({"embedding": embedding})
+			chunk.update({"vector": embedding})	# lancedb requires the embedding data be under the "vector" name
 
 			# Update the metadata with the new chunk.
 			chunk_metadata[idx] = chunk
@@ -209,17 +220,45 @@ def main():
 	# search. 
 	# Link to lancedb documentation: https://lancedb.github.io/lancedb/basic/
 
-	# Load the data into a vector DB (lanceDB).
-	# uri = "/data/lance_db_test"
-	# db = lancedb.connect(uri)
-	# tbl = db.create_table("test_table", data=vector_metadata)
-	# open_tbl = db.open_table("test_table")
-	# tbl_names = db.table_names()
-	# tbl.add(data=vector_metadata)
-	# tbl.search(vector_metadata[0]["embedding"]).limit(2)
-	# tbl.delete('"SHA1" = {vector_metadata[-1]['SHA1']}')
-	# db.drop_table("test_table")
+	###################################################################
+	# VECTOR DB OPS
+	###################################################################
 
+	# Initialize vector DB.
+	uri = "./data/lance_db_test"
+	db = lancedb.connect(uri)
+
+	# Get list of tables.
+	table_names = db.table_names()
+	print(F"Tables in {uri}: {', '.join(table_names)}")
+
+	# Search for specified table if it is available.
+	test_table_name = "test_table"
+	table_in_db = test_table_name in table_names
+	print(f"Searching for table '{test_table_name}' in database")
+	print(f"Table found in database: {table_in_db}")
+
+	# Create table if it does not exist in the database. Otherwise,
+	# retrieve the table.
+	if not table_in_db:
+		table = db.create_table(test_table_name, data=vector_metadata)
+	else:
+		table = db.open_table(test_table_name)
+
+	# Add the vectors to the table.
+	table.add(data=vector_metadata)
+
+	# Run search on the vector database. 
+	# search_results = table.search(vector_metadata[0]["embedding"])\
+	search_results = table.search(vector_metadata[0]["vector"])\
+		.limit(2)
+	print(json.dumps(search_results.to_list()))
+	
+	# Delete a value from the table.
+	table.delete(f'SHA1 = {vector_metadata[-1]["SHA1"]}')
+
+	# Delete the table.
+	db.drop_table(test_table_name)
 
 	# Exit the program.
 	exit(0)
