@@ -37,7 +37,11 @@ def main():
 	pages = pages[:100]	# subsample 100 to go to vector DB functionalities faster OR run 1,000 subsample on Nvidia GPU
 
 	# Load tokenizer and model.
-	device = "mps"
+	device = "cpu"
+	if torch.cuda.is_available():
+		device = "cuda"
+	elif torch.backends.mps.is_available():
+		device = "mps"
 	tokenizer, model = load_model(config, device)
 	# pipe = pipeline(
 	# 	"feature-extraction", model=model, tokenizer=tokenizer
