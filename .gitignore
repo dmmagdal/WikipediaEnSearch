@@ -7,5 +7,10 @@
 /hkunlp*
 /sentence-transformers*
 
+# database(s)
+/data
+/vector_data
+/bag_of_words
+
 # xml test file(s)
 *.xml
