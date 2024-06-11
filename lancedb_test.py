@@ -255,7 +255,7 @@ def main():
 	print(json.dumps(search_results.to_list()))
 	
 	# Delete a value from the table.
-	table.delete(f'SHA1 = {vector_metadata[-1]["SHA1"]}')
+	# table.delete(f'"SHA1" = {vector_metadata[-1]["SHA1"]}')
 
 	# Delete the table.
 	db.drop_table(test_table_name)
