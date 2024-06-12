@@ -249,6 +249,20 @@ def main():
 	else:
 		table = db.open_table(test_table_name)
 
+	# NOTE:
+	# From lancedb documentation: 
+	# https://lancedb.github.io/lancedb/basic/#search-for-nearest-neighbors
+	# By default, LanceDB runs a brute-force scan over dataset to find 
+	# the K nearest neighbours (KNN). For tables with more than 50K 
+	# vectors, creating an ANN index is recommended to speed up search 
+	# performance. LanceDB does not automatically create the ANN index 
+	# for two reasons. The first is that it's optimized for really fast
+	# retrievals via a disk-based index, and the second is that data 
+	# and query workloads can be very diverse, so there's no 
+	# one-size-fits-all index configuration. LanceDB provides many 
+	# parameters to fine-tune index size, query latency and accuracy. 
+	# See the section on ANN indexes for more details.
+
 	# Add the vectors to the table.
 	table.add(data=vector_metadata)
 
