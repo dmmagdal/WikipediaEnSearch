@@ -884,11 +884,6 @@ def main() -> None:
 		action="store_true",
 		help="Specify whether to restart the preprocessing from scratch. Default is false/not specified."
 	)
-	# parser.add_argument(
-	# 	"--multi_proc",
-	# 	action="store_true",
-	# 	help="Specify whether to use multiprocessing in preprocessing. Default is false/not specified."
-	# )
 	parser.add_argument(
 		"--bow",
 		action="store_true",
@@ -917,10 +912,6 @@ def main() -> None:
 		help="Whether to override the gpu2cpu_proc value. Default is false/not specified."
 	)
 	args = parser.parse_args()
-
-	print(f"num_proc: {args.num_proc}")
-	print(f"gpu2cpu_count: {args.gpu2cpu_count}")
-	print(f"override_gpu2cpu_count: {args.override_gpu2cpu_count}")
 
 	###################################################################
 	# VERIFY DATA FILES
@@ -997,6 +988,11 @@ def main() -> None:
 	elif torch.backends.mps.is_available():
 		device = "mps"
 
+	# Unpack arguments for multiprocessing.
+	num_proc = args.num_proc
+	override_gpu2cpu = args.override_gpu2cpu_count
+	gpu2cpu_limit = args.gpu2cpu_count
+
 	# Iterate through each file and preprocess it.
 	for idx, file in enumerate(data_files):
 		# Read in the file.
@@ -1038,12 +1034,6 @@ def main() -> None:
 		# computers. I just want the option for people who have more
 		# powerful hardware and want results quicker.
 
-		# Unpack arguments for multiprocessing.
-		num_proc = args.num_proc
-		override_gpu2cpu = args.override_gpu2cpu_count
-		gpu2cpu_limit = args.gpu2cpu_count
-
-		# if args.multi_proc:
 		if num_proc > 1:
 			# Determine the number of CPU cores to use (this will be
 			# passed down the the multiprocessing function)
