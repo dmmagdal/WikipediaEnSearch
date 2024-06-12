@@ -990,8 +990,8 @@ def main() -> None:
 
 	# Unpack arguments for multiprocessing.
 	num_proc = args.num_proc
-	override_gpu2cpu = args.override_gpu2cpu_count
-	gpu2cpu_limit = args.gpu2cpu_count
+	override_gpu2cpu = args.override_gpu2cpu_limit
+	gpu2cpu_limit = args.gpu2cpu_limit
 
 	# Iterate through each file and preprocess it.
 	for idx, file in enumerate(data_files):
