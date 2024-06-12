@@ -1037,11 +1037,11 @@ def main() -> None:
 			if max_proc > 4:
 				device = "cpu"
 
-			word_to_doc, doc_to_word, vector_metadata =  multiprocess_articles(
+			word_to_doc, doc_to_word, vector_metadata = multiprocess_articles(
 				args, device, file, pages_str, num_proc=max_proc
 			)
 		else:
-			word_to_doc, doc_to_word, vector_metadata =  process_articles(
+			word_to_doc, doc_to_word, vector_metadata = process_articles(
 				args, device, file, pages_str
 			)
 
