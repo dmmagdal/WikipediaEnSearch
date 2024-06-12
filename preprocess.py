@@ -884,11 +884,11 @@ def main() -> None:
 		action="store_true",
 		help="Specify whether to restart the preprocessing from scratch. Default is false/not specified."
 	)
-	parser.add_argument(
-		"--multi_proc",
-		action="store_true",
-		help="Specify whether to use multiprocessing in preprocessing. Default is false/not specified."
-	)
+	# parser.add_argument(
+	# 	"--multi_proc",
+	# 	action="store_true",
+	# 	help="Specify whether to use multiprocessing in preprocessing. Default is false/not specified."
+	# )
 	parser.add_argument(
 		"--bow",
 		action="store_true",
@@ -899,7 +899,28 @@ def main() -> None:
 		action="store_true",
 		help="Specify whether to run the vector database preprocessing. Default is false/not specified."
 	)
+	parser.add_argument(
+		'--num_proc', 
+		type=int, 
+		default=1, 
+		help="Number of processor cores to use for multiprocessing. Default is 1."
+	)
+	parser.add_argument(
+		'--gpu2cpu_limit', 
+		type=int, 
+		default=4, 
+		help="Maximum number of processor cores allowed before GPU is disabled. Default is 4."
+	)
+	parser.add_argument(
+		'--override_gpu2cpu_limit', 
+		action='store_true', 
+		help="Whether to override the gpu2cpu_proc value. Default is false/not specified."
+	)
 	args = parser.parse_args()
+
+	print(f"num_proc: {args.num_proc}")
+	print(f"gpu2cpu_count: {args.gpu2cpu_count}")
+	print(f"override_gpu2cpu_count: {args.override_gpu2cpu_count}")
 
 	###################################################################
 	# VERIFY DATA FILES
@@ -1017,10 +1038,17 @@ def main() -> None:
 		# computers. I just want the option for people who have more
 		# powerful hardware and want results quicker.
 
-		if args.multi_proc:
+		# Unpack arguments for multiprocessing.
+		num_proc = args.num_proc
+		override_gpu2cpu = args.override_gpu2cpu_count
+		gpu2cpu_limit = args.gpu2cpu_count
+
+		# if args.multi_proc:
+		if num_proc > 1:
 			# Determine the number of CPU cores to use (this will be
 			# passed down the the multiprocessing function)
 			max_proc = min(mp.cpu_count(), 32) # 16 or 32 on darkstar
+			max_proc = min(mp.cpu_count(), num_proc)
 
 			# Reset the device if the number of processes to be used is
 			# greater than 4. This is because the device setting is
@@ -1034,7 +1062,7 @@ def main() -> None:
 			# enabled, the user has a sufficient regular memory/RAM to
 			# load everything there. For now, this just makes things
 			# simpler.
-			if max_proc > 4:
+			if max_proc > gpu2cpu_limit and not override_gpu2cpu:
 				device = "cpu"
 
 			word_to_doc, doc_to_word, vector_metadata = multiprocess_articles(
