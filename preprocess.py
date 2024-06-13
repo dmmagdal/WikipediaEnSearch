@@ -760,7 +760,9 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 			continue
 
 		article_sha1 = sha1_tag.get_text()
-		# print(f"\tArticle SHA1 {article_sha1}")
+		print(f"\tArticle SHA1 {article_sha1}")
+		print("fin")
+		exit()
 
 		# Isolate the article/page's raw text.
 		article_text = process_page(page)
@@ -1025,19 +1027,9 @@ def main() -> None:
 		# been processed in the file. Don't worry about bringing this
 		# over the JS implementation.
 
-		# TODO:
-		# Investigate using multiprocessing to speed up the process.
-		# There are hundreds of files to process and each one takes a
-		# significant amount of time to comb through and preprocess.
-		# The memory overhead is minimal, so single threaded/process
-		# approach is still fine for underpowered or consumer 
-		# computers. I just want the option for people who have more
-		# powerful hardware and want results quicker.
-
 		if num_proc > 1:
 			# Determine the number of CPU cores to use (this will be
 			# passed down the the multiprocessing function)
-			max_proc = min(mp.cpu_count(), 32) # 16 or 32 on darkstar
 			max_proc = min(mp.cpu_count(), num_proc)
 
 			# Reset the device if the number of processes to be used is

@@ -21,6 +21,13 @@ Description: Provides a text based search for Wikipedia (English only)
 
  - Preprocess Wikipedia data (`preprocess.py`)
      - `python preprocess.py`
+     - Arguments
+         - `--bow`: perform bag-of-words preprocessing for the data.
+         - `--vector`: perform vector preprocessing for the data.
+         - `--num_proc`: the number of processors to use for preprocessing (default is 1).
+         - `--gpu2cpu_limit`: the maximum processors allowed before use of the GPU is forced to the CPU (default is 4).
+         - `--override_gpu2cpu_limit`: whether to ignore the limit set by `--gpu2cpu_limit` argument (default is false/not specified).
+         - Example: `python preprocess.py --bow --vector --num_proc=16 --override_gpu2cpu_limit`
  - Search Wikipedia (`searchwiki.py`)
      - `python searchwiki.py`
 
@@ -67,6 +74,18 @@ Description: Provides a text based search for Wikipedia (English only)
          - Multiprocessing in Python: Pool [video](https://www.youtube.com/watch?v=u2jTn-Gj2Xw)
          - Python starmap (itertools): A short and easy intro [video](https://www.youtube.com/watch?v=wiwb5WAByFE)
  - Got ascii art from [here](https://patorjk.com/software/taag/#p=display&f=Sub-Zero&t=Wikipedia%20%0ASearch)
+ - Dev/performance notes:
+     - Despite being designed to scale but also run from consumer level hardware, the data preprocessing is NOT ideal for consumer hardware.
+     - Bag of words + vector preprocessing
+         - Could not run bag of words and vector preprocessing at the same time. Managed to OOM when the data was almost completely done. Current server hardware is not sufficient for this but it's interesting to see those limits.
+         - Estimated runtime on 16 cores was around 24 hours per file.
+         - Used only 16 cores because it would create 16 instances of the embedding model and my server has 16GB VRAM per card.
+     - Bag of words preprocessing only
+         - Estimated runtime on 32 cores was around 4 hours per file.
+         - Task is CPU bound only.
+     - Vector preprocessing only
+         - Estimated runtime on 16 cores was around hours per file.
+         - Task can be either CPU or GPU bound.
 
 
 ### Parsing Documents & Queries
