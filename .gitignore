@@ -12,5 +12,12 @@
 /vector_data
 /bag_of_words
 
+# intermediate metadata
+/metadata
+
+# preprocess state files
+preprocess_state_bow.txt
+preprocess_state_vector.txt
+
 # xml test file(s)
 *.xml

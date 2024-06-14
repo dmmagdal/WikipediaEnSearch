@@ -83,9 +83,12 @@ Description: Provides a text based search for Wikipedia (English only)
      - Bag of words preprocessing only
          - Estimated runtime on 32 cores was around 4 hours per file.
          - Task is CPU bound only.
+         - Word to document metadata around 50 MB per file.
+         - Document to word metadata around 10 MB per file.
      - Vector preprocessing only
-         - Estimated runtime on 16 cores was around hours per file.
+         - Estimated runtime on 16 cores was around hours per file (gpu to cpu override enabled).
          - Task can be either CPU or GPU bound.
+         - Vector metadata around per file.
 
 
 ### Parsing Documents & Queries

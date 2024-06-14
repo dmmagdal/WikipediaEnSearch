@@ -7,6 +7,7 @@
 import argparse
 from argparse import Namespace
 import copy
+import gc
 import json
 import math
 import multiprocessing as mp
@@ -24,11 +25,44 @@ from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 from num2words import num2words
-# import numpy as np
 import requests
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
+
+
+def get_datastruct_size(data_struct) -> int:
+	'''
+	Given some data structure, compute and print out its size in a
+		human readable format.
+	@param: data_struct (Any), the data structure that will have its
+	 	size computed.
+	@return: returns the size of the data structure (in Bytes).
+	'''
+	# Get size of data.
+	data_size = sys.getsizeof(data_struct)
+	GB_SIZE = 1024 * 1024 * 1024
+	MB_SIZE = 1024 * 1024
+	KB_SIZE = 1024
+
+	# Convert data size to various units.
+	data_gb = data_size / GB_SIZE
+	data_mb = data_size / MB_SIZE
+	data_kb = data_size / KB_SIZE
+
+	# Print size of data and how many entries are in each data
+	# structure.
+	if data_gb > 1:
+		print(f"Data structure has reached over 1GB in size ({round(data_gb, 2)} GB)")
+	elif data_mb > 1:
+		print(f"Data structure has reached over 1MB in size ({round(data_mb, 2)} MB)")
+	elif data_kb > 1:
+		print(f"Data structure has reached over 1KB in size ({round(data_kb, 2)} KB)")
+	else:
+		print(f"Data structure size {data_size} Bytes)")
+
+	# Return.
+	return data_size
 
 
 def process_page(page: Tag | NavigableString) -> str:
@@ -729,12 +763,12 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 		processed.
 	@param: pages (List[str]), the raw xml text that is going to be
 		processed.
-	@return: returns the set of dictionaries containing the necessary 
-		data and metadata to index the articles.
+	@return: returns the set of dictionaries and list containing the 
+		necessary data and metadata to index the articles.
 	'''
 	# Initialize local mappings.
-	word_to_doc = dict()
 	doc_to_word = dict()
+	word_to_doc = dict()
 	vector_metadata = list()
 
 	# Pass each page string into beautifulsoup.
@@ -756,21 +790,26 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 		# Isolate the article/page's SHA1.
 		sha1_tag = page.find("sha1")
 
+		# Skip articles that don't have a SHA1 (should not be possible 
+		# but you never know).
 		if sha1_tag is None:
 			continue
 
+		# Clean article SHA1 text.
 		article_sha1 = sha1_tag.get_text()
 		article_sha1 = article_sha1.replace(" ", "").replace("\n", "")
 
-		# Isolate the article/page's raw text.
+		# Isolate the article/page's raw text. Create copies for each
+		# preprocessing task.
 		article_text = process_page(page)
-		article_text_bow = copy.deepcopy(article_text)
-		article_text_v_db = copy.deepcopy(article_text)
 
 		###############################################################
 		# BAG OF WORDS
 		###############################################################
 		if args.bow:
+			# Create a copy of the raw text.
+			article_text_bow = copy.deepcopy(article_text)
+
 			# Create a bag of words for each article (xml) file.
 			xml_bow, xml_word_freq = bow_preprocessing(
 				article_text_bow, return_word_freq=True
@@ -797,6 +836,9 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 			# Assertion to make sure tokenizer and model is
 			# initialized.
 			assert None not in [tokenizer, model], "Model tokenizer and model is expected to be initialized for vector embeddings preprocessing."
+
+			# Create a copy of the raw text.
+			article_text_v_db = copy.deepcopy(article_text)
 
 			# Pass the article to break the text into manageable chunks
 			# for the embedding model. This will yield the (padded) 
@@ -862,7 +904,7 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 			# Add the chunk metadata to the vector metadata.
 			vector_metadata += chunk_metadata
 	
-	# Return the mappings.
+	# Return the mappings and metadata.
 	return doc_to_word, word_to_doc, vector_metadata
 
 
@@ -964,6 +1006,60 @@ def main() -> None:
 	load_model(config)
 
 	###################################################################
+	# METADATA PATHS
+	###################################################################
+	# Pull directory paths from the config file.
+	preprocessing = config["preprocessing"]
+	d2w_metadata_path = preprocessing["doc_to_words_path"]
+	w2d_metadata_path = preprocessing["word_to_docs_path"]
+	vector_metadata_path = preprocessing["vector_metadata_path"]
+	
+	# Initialize the directories if they don't already exist.
+	if not os.path.exists(d2w_metadata_path):
+		os.makedirs(d2w_metadata_path, exist_ok=True)
+
+	if not os.path.exists(w2d_metadata_path):
+		os.makedirs(w2d_metadata_path, exist_ok=True)
+
+	if not os.path.exists(vector_metadata_path):
+		os.makedirs(vector_metadata_path, exist_ok=True)
+
+	###################################################################
+	# PROGRESS CHECK
+	###################################################################
+	# Progress files.
+	progress_file_bow = "./preprocess_state_bow.txt"
+	progress_file_vector = "./preprocess_state_vector.txt"
+
+	# Progress list.
+	bow_progress = []
+	vector_progress = []
+
+	# TODO:
+	# Refactor this code to not use the same line(s) twice to 
+	# initialize/clear the progress files.
+
+	if args.restart:
+		# Clear the progress files if the restart flag has been thrown.
+		open(progress_file_bow, "w+").close()
+		open(progress_file_vector, "w+").close()
+	else:
+		# Override progress list with file contents (if the restart
+		# flag has not been thrown).
+		if os.path.exists(progress_file_bow):
+			with open(progress_file_bow, "r") as pf1: 
+				bow_progress = pf1.readlines()
+		else:
+			open(progress_file_bow, "w+").close()
+
+		if os.path.exists(progress_file_vector):
+			with open(progress_file_vector, "r") as pf2: 
+				vector_progress = pf2.readlines()
+		else:
+			open(progress_file_vector, "w+").close()
+
+
+	###################################################################
 	# FILE PREPROCESSING
 	###################################################################
 	# Initialize a dictionary to keep track of the word to documents
@@ -995,6 +1091,15 @@ def main() -> None:
 
 	# Iterate through each file and preprocess it.
 	for idx, file in enumerate(data_files):
+		# Check if the file has already been processed for both 
+		# bag-of-words and vector preprocessing. If so, skip the file.
+		condition1 = file in bow_progress and file in vector_progress
+		condition2 = file in bow_progress and args.bow and not args.vector
+		condition3 = file in vector_progress and not args.bow and args.vector
+		if condition1 or condition2 or condition3:
+			print(f"Processed file ({idx + 1}/{len(data_files)}) {file}.")
+			continue
+
 		# Read in the file.
 		with open(file, "r") as f:
 			raw_text = f.read()
@@ -1067,6 +1172,7 @@ def main() -> None:
 		###############################################################
 		# COMPUTE SIZE OF MAPPINGS
 		###############################################################
+		# Get size of data.
 		d2w_size = sys.getsizeof(doc_to_word)
 		w2d_size = sys.getsizeof(word_to_doc)
 		vm_size = sys.getsizeof(vector_metadata)
@@ -1074,6 +1180,7 @@ def main() -> None:
 		MB_SIZE = 1024 * 1024
 		KB_SIZE = 1024
 
+		# Convert data size to various units.
 		d2w_gb = d2w_size / GB_SIZE
 		d2w_mb = d2w_size / MB_SIZE
 		d2w_kb = d2w_size / KB_SIZE
@@ -1084,6 +1191,8 @@ def main() -> None:
 		vm_mb = vm_size / MB_SIZE
 		vm_kb = vm_size / KB_SIZE
 		
+		# Print size of data and how many entries are in each data
+		# structure.
 		if d2w_gb > 1:
 			print(f"Document to word map has reached over 1GB in size ({round(d2w_gb, 2)} GB)")
 		elif d2w_mb > 1:
@@ -1114,11 +1223,41 @@ def main() -> None:
 			print(f"Vector metadata list size {vm_size} Bytes)")
 		print(f"Number of entries in vector metadata list: {len(vector_metadata)}")
 
-		exit()
+		# exit()
 
+		# Write metadata to the respective files.
+		if len(list(doc_to_word.keys())) > 0:
+			path = os.path.join(
+				d2w_metadata_path, 
+				os.path.basename(file).rstrip('.xml') + ".json"
+			)
+			with open(path, "w+") as d2w_f:
+				json.dump(doc_to_word, d2w_f, indent=4)
+
+		if len(list(word_to_doc.keys())) > 0:
+			path = os.path.join(
+				w2d_metadata_path, 
+				os.path.basename(file).rstrip('.xml') + ".json"
+			)
+			with open(path, "w+") as w2d_f:
+				json.dump(word_to_doc, w2d_f, indent=4)
+
+		# TODO:
+		# Implement writing vector metadata to vector DB with lancedb.
+
+		# Update progress files as necessary.
+		if args.bow:
+			bow_progress.append(file)
+			with open(progress_file_bow, "w+") as pf1:
+				pf1.write("\n".join(bow_progress))
+
+		if args.vector:
+			vector_progress.append(file)
+			with open(progress_file_vector, "w+") as pf2:
+				pf2.write("\n".join(vector_progress))
 
 		# Perform garbage collection.
-		# gc.collect()
+		gc.collect()
 
 		# NOTE:
 		# Checkpoint interval is set to 50,000 (articles/documents)
@@ -1131,10 +1270,6 @@ def main() -> None:
 		# very large files. It has a hard limit on opening files over
 		# 1GB on 64-bit systems or 512MB on 32-bit systems (error on
 		# the side of 64-bit in this day and age).
-
-		# Checkpoint save current status.
-		if idx > 0 and idx % 50_000 == 0:
-			pass
 
 	# Exit the program.
 	exit(0)
