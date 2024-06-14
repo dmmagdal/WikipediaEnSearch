@@ -656,14 +656,14 @@ def merge_mappings(results: List[List]) -> Tuple[Dict]:
 	# through each result and update the aggregate variables.
 	for result in results:
 		# Unpack the result tuple.
-		word_to_doc, doc_to_word, vector_metadata = result
+		doc_to_word, word_to_doc, vector_metadata = result
 
 		# Iteratively update the word to document dictionary.
 		for key, value in word_to_doc.items():
 			if key not in aggr_word_to_doc:
 				aggr_word_to_doc[key] = value
 			else:
-				aggr_doc_to_word[key] += value
+				aggr_word_to_doc[key] += value
 
 		# Update the document to word dictionary. Just call a
 		# dictionary's update() function here since every key in the
@@ -675,7 +675,7 @@ def merge_mappings(results: List[List]) -> Tuple[Dict]:
 		aggr_vector_metadata += vector_metadata
 
 	# Return the aggregated data.
-	return aggr_word_to_doc, aggr_doc_to_word, aggr_vector_metadata
+	return aggr_doc_to_word, aggr_word_to_doc, aggr_vector_metadata
 
 
 def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[str], num_proc: int=1):
@@ -710,12 +710,12 @@ def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[s
 		results = pool.starmap(process_articles, arg_list)
 
 		# Pass the aggregate results tuple to be merged.
-		word_to_doc, doc_to_word, vector_metadata = merge_mappings(
+		doc_to_word, word_to_doc, vector_metadata = merge_mappings(
 			results
 		)
 
 	# Return the different mappings.
-	return word_to_doc, doc_to_word, vector_metadata
+	return doc_to_word, word_to_doc, vector_metadata
 
 
 def process_articles(args: Namespace, device: str, file: str, pages_str: List[str]):
@@ -1045,11 +1045,11 @@ def main() -> None:
 			if max_proc > gpu2cpu_limit and not override_gpu2cpu:
 				device = "cpu"
 
-			word_to_doc, doc_to_word, vector_metadata = multiprocess_articles(
+			doc_to_word, word_to_doc, vector_metadata = multiprocess_articles(
 				args, device, file, pages_str, num_proc=max_proc
 			)
 		else:
-			word_to_doc, doc_to_word, vector_metadata = process_articles(
+			doc_to_word, word_to_doc, vector_metadata = process_articles(
 				args, device, file, pages_str
 			)
 
