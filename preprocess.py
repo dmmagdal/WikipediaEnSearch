@@ -760,9 +760,7 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 			continue
 
 		article_sha1 = sha1_tag.get_text()
-		print(f"\tArticle SHA1 {article_sha1}")
-		print("fin")
-		exit()
+		article_sha1 = article_sha1.replace(" ", "").replace("\n", "")
 
 		# Isolate the article/page's raw text.
 		article_text = process_page(page)
