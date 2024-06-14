@@ -1086,10 +1086,12 @@ def main() -> None:
 		
 		if d2w_gb > 1:
 			print(f"Document to word map has reached over 1GB in size ({round(d2w_gb, 2)} GB)")
-		elif d2w_gb > 1:
+		elif d2w_mb > 1:
 			print(f"Document to word map has reached over 1MB in size ({round(d2w_mb, 2)} MB)")
-		elif d2w_gb > 1:
+		elif d2w_kb > 1:
 			print(f"Document to word map has reached over 1KB in size ({round(d2w_kb, 2)} KB)")
+		else:
+			print(f"Document to word map size {d2w_size} Bytes)")
 		print(f"Number of entries in document to word map: {len(list(doc_to_word.keys()))}")
 
 		if w2d_gb > 1:
@@ -1098,6 +1100,8 @@ def main() -> None:
 			print(f"Word to document map has reached over 1MB in size ({round(w2d_mb, 2)} MB)")
 		elif w2d_kb > 1:
 			print(f"Word to document map has reached over 1KB in size ({round(w2d_kb, 2)} KB)")
+		else:
+			print(f"Word to document map size {w2d_size} Bytes)")
 		print(f"Number of entries in word to document map: {len(list(word_to_doc.keys()))}")
 
 		if vm_gb > 1:
@@ -1106,6 +1110,8 @@ def main() -> None:
 			print(f"Vector metadata list has reached over 1MB in size ({round(vm_mb, 2)} MB)")
 		elif vm_kb > 1:
 			print(f"Vector metadata list has reached over 1KB in size ({round(vm_kb, 2)} KB)")
+		else:
+			print(f"Vector metadata list size {vm_size} Bytes)")
 		print(f"Number of entries in vector metadata list: {len(vector_metadata)}")
 
 		exit()
