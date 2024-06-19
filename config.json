@@ -23,109 +23,127 @@
             "model_id": "google-bert/bert-base-uncased",
             "cache_dir": "bert-base-uncased_cache",
             "storage_dir": "bert-base-uncased",
-            "max_tokens": 512
+            "max_tokens": 512,
+            "dims": 768
         },
         "mobilebert": {
             "model_id": "google/mobilebert-uncased",
             "cache_dir": "google_mobilebert-uncased_cache",
             "storage_dir": "google_mobilebert-uncased",
-            "max_tokens": 512
+            "max_tokens": 512,
+            "dims": 768
         },
         "distilbert": {
             "model_id": "distilbert/distilbert-base-uncased",
             "cache_dir": "google_mobilebert-uncased_cache",
             "storage_dir": "google_mobilebert-uncased",
-            "max_tokens": 512
+            "max_tokens": 512,
+            "dims": 768
         },
         "bert-large": {
             "model_id": "google-bert/bert-large-uncased",
             "cache_dir": "bert-large-uncased_cache",
             "storage_dir": "bert-large-uncased",
-            "max_tokens": 512
+            "max_tokens": 512,
+            "dims": 768
         },
         "st-minilm-l6-v1": {
             "model_id": "sentence-transformers/all-MiniLM-L6-v1",
             "cache_dir": "sentence-transformers_all-MiniLM-L6-v1_cache",
             "storage_dir": "sentence-transformers_all-MiniLM-L6-v1",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 384
         },
         "st-minilm-l6-v2": {
             "model_id": "sentence-transformers/all-MiniLM-L6-v2",
             "cache_dir": "sentence-transformers_all-MiniLM-L6-v2_cache",
             "storage_dir": "sentence-transformers_all-MiniLM-L6-v2",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 384
         },
         "st-minilm-l12-v1": {
             "model_id": "sentence-transformers/all-MiniLM-L12-v1",
             "cache_dir": "sentence-transformers_all-MiniLM-L12-v1_cache",
             "storage_dir": "sentence-transformers_all-MiniLM-L12-v1",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 384
         },
         "st-minilm-l12-v2": {
             "model_id": "sentence-transformers/all-MiniLM-L12-v2",
             "cache_dir": "sentence-transformers_all-MiniLM-L12-v2_cache",
             "storage_dir": "sentence-transformers_all-MiniLM-L12-v2",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 384
         },
         "st-paraphrase-minilm-l3-v2": {
             "model_id": "sentence-transformers/paraphrase-MiniLM-L3-v2",
             "cache_dir": "sentence-transformers_paraphrase-MiniLM-L3-v2_cache",
             "storage_dir": "sentence-transformers_paraphrase-MiniLM-L3-v2",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 384
         },
         "st-paraphrase-minilm-l6-v2": {
             "model_id": "sentence-transformers/paraphrase-MiniLM-L6-v2",
             "cache_dir": "sentence-transformers_paraphrase-MiniLM-L6-v2_cache",
             "storage_dir": "sentence-transformers_paraphrase-MiniLM-L6-v2",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 384
         },
         "st-paraphrase-minilm-l12-v2": {
             "model_id": "sentence-transformers/paraphrase-MiniLM-L12-v2",
             "cache_dir": "sentence-transformers_paraphrase-MiniLM-L12-v2_cache",
             "storage_dir": "sentence-transformers_paraphrase-MiniLM-L12-v2",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 384
         },
         "st-all-roberta-large-v1": {
             "model_id": "sentence-transformers/all-roberta-large-v1",
             "cache_dir": "sentence-transformers_all-roberta-large-v1_cache",
             "storage_dir": "sentence-transformers_all-roberta-large-v1",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 1024
         },
         "st-all-distilroberta-large-v1": {
-            "model_id": "sentence-transformers/all-distilroberta-large-v1",
-            "cache_dir": "sentence-transformers_all-distilroberta-large-v1_cache",
-            "storage_dir": "sentence-transformers_all-distilroberta-large-v1",
-            "max_tokens": 128
+            "model_id": "sentence-transformers/all-distilroberta-v1",
+            "cache_dir": "sentence-transformers_all-distilroberta-v1_cache",
+            "storage_dir": "sentence-transformers_all-distilroberta-v1",
+            "max_tokens": 128,
+            "dims": 768
         },
         "st-multi-qa-minilm-l6-dot-v1": {
             "model_id": "sentence-transformers/multi-qa-MiniLM-L6-dot-v1",
             "cache_dir": "sentence-transformers_multi-qa-MiniLM-L6-dot-v1_cache",
             "storage_dir": "sentence-transformers_multi-qa-MiniLM-L6-dot-v1",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 384
         },
         "st-multi-qa-minilm-l6-cos-v1": {
             "model_id": "sentence-transformers/multi-qa-MiniLM-L6-cos-v1",
             "cache_dir": "sentence-transformers_multi-qa-MiniLM-L6-cos-v1_cache",
             "storage_dir": "sentence-transformers_multi-qa-MiniLM-L6-cos-v1",
-            "max_tokens": 128
+            "max_tokens": 128,
+            "dims": 384
         },
         "hkunlp-instructor-base": {
             "model_id": "hkunlp/instructor-base",
             "cache_dir": "hkunlp_instructor-base_cache",
             "storage_dir": "hkunlp_instructor-base",
-            "max_tokens": 512
+            "max_tokens": 512,
+            "dims": 768
         },
         "hkunlp-instructor-large": {
             "model_id": "hkunlp/instructor-large",
             "cache_dir": "hkunlp_instructor-large_cache",
             "storage_dir": "hkunlp_instructor-large",
-            "max_tokens": 512
+            "max_tokens": 512,
+            "dims": 768
         },
         "hkunlp-instructor-xl": {
             "model_id": "hkunlp/instructor-xl",
             "cache_dir": "hkunlp_instructor-xl_cache",
             "storage_dir": "hkunlp_instructor-xl",
-            "max_tokens": 512
+            "max_tokens": 512,
+            "dims": 768
         }
     }
 }

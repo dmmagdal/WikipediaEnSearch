@@ -12,6 +12,7 @@ import json
 import math
 import multiprocessing as mp
 import os
+import pyarrow as pa
 import shutil
 import string
 import sys
@@ -21,10 +22,12 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag, NavigableString
 import faiss
 import lancedb
+from lancedb.pydantic import Vector, LanceModel
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 from num2words import num2words
+import numpy as np
 import requests
 import torch
 from tqdm import tqdm
@@ -781,9 +784,23 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 	# Load the model tokenizer and model (if applicable). Do this here
 	# instead of within the for loop for (runtime) efficiency.
 	tokenizer, model = None, None
+	db, table = None, None
 	if args.vector:
 		# Load the tokenizer and model.
 		tokenizer, model = load_model(config, device)
+
+		# Connect to the vector database
+		uri = config["vector-search_config"]["db_uri"]
+		db = lancedb.connect(uri)
+
+		# Assert the table for the file exists (should have been
+		# initialized in the for loop in main()).
+		table_name = os.path.basename(file).rstrip(".xml")
+		current_tables = db.table_names()
+		assert table_name in current_tables, f"Expected table {table_name} to be in list of current tables before vector embedding preprocessing.\nCurrent Tables: {', '.join(current_tables)}"
+
+		# Get the table for the file.
+		table = db.open_table(table_name)
 
 	# for page in pages:
 	for page in tqdm(pages):
@@ -833,9 +850,10 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 		# VECTOR EMBEDDINGS
 		###############################################################
 		if args.vector:
-			# Assertion to make sure tokenizer and model is
-			# initialized.
+			# Assertion to make sure tokenizer and model and vector
+			# database and current table are initialized.
 			assert None not in [tokenizer, model], "Model tokenizer and model is expected to be initialized for vector embeddings preprocessing."
+			assert None not in [db, table], "Vector database and current table are expected to be initialized for vector embeddings preprocessing."
 
 			# Create a copy of the raw text.
 			article_text_v_db = copy.deepcopy(article_text)
@@ -902,7 +920,11 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 					chunk_metadata[idx] = chunk
 				
 			# Add the chunk metadata to the vector metadata.
-			vector_metadata += chunk_metadata
+			# vector_metadata += chunk_metadata
+
+			# Add chunk metadata to the vector database. Should be on
+			# "append" mode by default.
+			table.add(chunk_metadata)
 	
 	# Return the mappings and metadata.
 	return doc_to_word, word_to_doc, vector_metadata
@@ -1006,6 +1028,27 @@ def main() -> None:
 	load_model(config)
 
 	###################################################################
+	# VECTOR DB SETUP
+	###################################################################
+	# Initialize (if need be) and connect to the vector database.
+	uri = config["vector-search_config"]["db_uri"]
+	db = lancedb.connect(uri)
+
+	# Load model dims to pass along to the schema init.
+	model_name = config["vector-search_config"]["model"]
+	dims = config["models"][model_name]["dims"]
+
+	# Initialize schema (this will be passed to the database when 
+	# creating a new, empty table in the vector database).
+	schema = pa.schema([
+		pa.field("file", pa.utf8()),
+		pa.field("sha1", pa.utf8()),
+		pa.field("text_idx", pa.int64()),
+		pa.field("text_len", pa.int64()),
+		pa.field("vector", pa.list_(pa.float32(), dims))
+	])
+
+	###################################################################
 	# METADATA PATHS
 	###################################################################
 	# Pull directory paths from the config file.
@@ -1105,6 +1148,20 @@ def main() -> None:
 			raw_text = f.read()
 
 		print(f"Processing file ({idx + 1}/{len(data_files)}) {file}...")
+
+		if args.vector:
+			# If the table is already initialized, but the page has not 
+			# been marked as recorded (and therefore the rest of this
+			# preprocessing would not occur if it were marked), drop
+			# that table (this assumes that the data loading for that 
+			# table is incomplete).
+			table_name = os.path.basename(file).rstrip(".xml")
+			current_tables = db.table_names()
+			if table_name in current_tables:
+				db.drop_table(table_name)
+
+			# Initialize the fresh table for the current page.
+			db.create_table(table_name, schema=schema)
 
 		# Load the raw text into a beautifulsoup object and extract the
 		# <page> tags.
@@ -1223,7 +1280,7 @@ def main() -> None:
 			print(f"Vector metadata list size {vm_size} Bytes)")
 		print(f"Number of entries in vector metadata list: {len(vector_metadata)}")
 
-		# exit()
+		exit()
 
 		# Write metadata to the respective files.
 		if len(list(doc_to_word.keys())) > 0:
