@@ -198,7 +198,7 @@ word: [document_1_path, document_2_path, ... , document_n_path]
          - I ran out of space on my server when generating embeddings for just 1 file. Embedding process was about 75% complete and generated 187 GB of data in the `lancedb` vector DB when it stopped. My server has a 1 TB hard drive but there are other projects and files stored on the machine.
          - Performing a napkin calculation I found that embedding all vectors in the dataset would take around 2.2 TB (this was just the embeddings, not the additional metadata that is stored with the embedding in the vector DB).
              - 1 (BERT) embedding has 768 dims
-                 - Embedding uses float32 dtype which is 32-bit floating point number which equates to 4 bytes.
+                 - Embeddings use float32 dtype which is 32-bit floating point number which equates to 4 bytes.
                  - The total embedding storage overhead is 4 x 768 or 3,072 bytes.
              - 1 file had around 4 million vectors.
                  - 1 file also had 150,000 articles.
