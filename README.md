@@ -187,13 +187,26 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Uses language models to turn articles and search queries into embeddings and performms k nearest neighbors (knn) to get the embeddings that are most semantically similar.
      - Models to be considered:
          - BERT
-             - bert-base-cased
-             - mobilebert
+             - google-bert/bert-base-uncased
+             - google/mobilebert-uncased
+             - distilbert/distilbert-base-uncased
+             - google-bert/bert-large-uncased
          - All MiniLM ([sentence-transformers](https://huggingface.co/sentence-transformers))
              - sentence-transformers/all-MiniLM-L6-v2
              - sentence-transformers/all-MiniLM-L6-v1
              - sentence-transformers/all-MiniLM-L12-v2
              - sentence-transformers/all-MiniLM-L12-v1
+             - sentence-transformers/paraphrase-MiniLM-L3-v2
+             - sentence-transformers/paraphrase-MiniLM-L6-v2
+             - sentence-transformers/paraphrase-MiniLM-L12-v2
+             - sentence-transformers/all-roberta-large-v1
+             - sentence-transformers/all-distilroberta-v1
+             - sentence-transformers/multi-qa-MiniLM-L6-cos-v1
+             - sentence-transformers/multi-qa-MiniLM-L6-dot-v1
+         - Instructor ([hkunlp](https://huggingface.co/hkunlp))
+             - hkunlp/instructor-base
+             - hkunlp/instructor-large
+             - hkunlp/instructor-xl
      - UPDATE 06/19/2024:
          - I ran out of space on my server when generating embeddings for just 1 file. Embedding process was about 75% complete and generated 187 GB of data in the `lancedb` vector DB when it stopped. My server has a 1 TB hard drive but there are other projects and files stored on the machine.
          - Performing a napkin calculation I found that embedding all vectors in the dataset would take around 2.2 TB (this was just the embeddings, not the additional metadata that is stored with the embedding in the vector DB).
