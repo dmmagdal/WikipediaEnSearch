@@ -145,6 +145,46 @@ def replace_superscripts(text: str) -> str:
 	return ''.join(result)
 
 
+def replace_subscripts(text: str) -> str:
+	'''
+	Replace all subscripts depending on the character.
+	@param: text (str), the text that is going to have its text 
+		removed/modified.
+	@return: returns the text with all subscript characters replaced
+		with regular numbers.
+	'''
+	subscript_map = {
+		'₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4',
+		'₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9'
+	}
+	
+	# result = ""
+	# for char in text:
+	# 	if char in superscript_map:
+	# 		# result += '^' + superscript_map[char]
+	# 		result += superscript_map[char]
+	# 	else:
+	# 		result += char
+	# return result
+	result = []
+	i = 0
+	while i < len(text):
+		if text[i] in subscript_map:
+			# Start of a superscript sequence.
+			sequence = []
+			while i < len(text) and text[i] in subscript_map:
+				sequence.append(subscript_map[text[i]])
+				i += 1
+
+			# Join the sequence and prepend "^".
+			result.append('^' + ''.join(sequence) + " ")
+		else:
+			result.append(text[i])
+			i += 1
+
+	return ''.join(result)
+
+
 def remove_punctuation(text: str) -> str:
 	'''
 	Replace all punctuation with whitespace (" ") or empty space ("")
@@ -277,7 +317,7 @@ def bow_preprocessing(text: str, return_word_freq: bool=False):
 	# 1) lowercase
 	# 2) remove punctuation
 	# 3) remove stop words
-	# 4) remove superscripts
+	# 4) remove superscripts/subscripts
 	# 5) convert numbers
 	# 6) lemmatize
 	# 7) stem
@@ -294,6 +334,7 @@ def bow_preprocessing(text: str, return_word_freq: bool=False):
 	text = remove_punctuation(text)
 	text = remove_stopwords(text)
 	text = replace_superscripts(text)
+	text = replace_subscripts(text)
 	text = convert_numbers(text)
 	text = lemmatize(text)
 	text = stem(text)
@@ -1137,7 +1178,7 @@ def main() -> None:
 		condition2 = file in bow_progress and args.bow and not args.vector
 		condition3 = file in vector_progress and not args.bow and args.vector
 		if condition1 or condition2 or condition3:
-			print(f"Processed file ({idx + 1}/{len(data_files)}) {file}.")
+			print(f"Already processed file ({idx + 1}/{len(data_files)}) {file}.")
 			continue
 
 		# Read in the file.
