@@ -105,6 +105,48 @@ def lowercase(text: str) -> str:
 	return text.lower()
 
 
+def handle_special_numbers(text: str) -> str:
+	'''
+	Replace all special numbers (circle digits, circle numbers, and
+		parenthesis numbers) with more standardized representations 
+		depending on the character.
+	@param: text (str), the text that is going to have its text 
+		removed/modified.
+	@return: returns the text with all special numbers replaced with 
+		regular numbers.
+	'''
+	# Mapping of circled digits to regular digits
+	circled_digits = {
+		'①': '(1)', '②': '(2)', '③': '(3)', '④': '(4)', '⑤': '(5)',
+		'⑥': '(6)', '⑦': '(7)', '⑧': '(8)', '⑨': '(9)', '⑩': '(10)',
+		'⑪': '(11)', '⑫': '(12)', '⑬': '13', '⑭': '14', '⑮': '(15)',
+		'⑯': '(16)', '⑰': '(17)', '⑱': '18', '⑲': '19', '⑳': '(20)',
+		'㉑': '(21)', '㉒': '(22)', '㉓': '23', '㉔': '24', '㉕': '(25)',
+		'㉖': '(26)', '㉗': '(27)', '㉘': '28', '㉙': '29', '㉚': '(30)',
+		'㉛': '(31)', '㉜': '(32)', '㉝': '33', '㉞': '34', '㉟': '(35)',
+		'㊱': '(36)', '㊲': '(37)', '㊳': '38', '㊴': '39', '㊵': '(40)',
+		'㊶': '(41)', '㊷': '(42)', '㊸': '43', '㊹': '44', '㊺': '(45)',
+		'㊻': '(46)', '㊼': '(47)', '㊽': '48', '㊾': '49', '㊿': '(50)'
+	}
+	
+	# Mapping of parenthesized digits to regular digits
+	parenthesized_digits = {
+		'⑴': '(1)', '⑵': '(2)', '⑶': '(3)', '⑷': '(4)', '⑸': '(5)',
+		'⑹': '(6)', '⑺': '(7)', '⑻': '(8)', '⑼': '(9)', '⑽': '(10)',
+		'⑾': '(11)', '⑿': '(12)', '⒀': '(13)', '⒁': '(14)', '⒂': '(15)',
+		'⒃': '(16)', '⒄': '(17)', '⒅': '(18)', '⒆': '(19)', '⒇': '(20)'
+	}
+	
+	# Combine both dictionaries
+	all_special_numbers = {**circled_digits, **parenthesized_digits}
+	
+	# Replace all special numbers with their regular counterparts
+	for special, regular in all_special_numbers.items():
+		text = text.replace(special, regular)
+	
+	return text
+
+
 def replace_superscripts(text: str) -> str:
 	'''
 	Replace all superscripts depending on the character.
@@ -315,22 +357,24 @@ def bow_preprocessing(text: str, return_word_freq: bool=False):
 	'''
 	# Perform the following text preprocessing in the following order:
 	# 1) lowercase
-	# 2) remove punctuation
-	# 3) remove stop words
-	# 4) remove superscripts/subscripts
-	# 5) convert numbers
-	# 6) lemmatize
-	# 7) stem
-	# 8) remove punctuation
-	# 9) convert numbers
-	# 10) stem
-	# 11) remove punctuation
-	# 12) remove stopwords
+	# 2) handle special (circle) numbers 
+	# 3) remove punctuation
+	# 4) remove stop words
+	# 5) remove superscripts/subscripts
+	# 6) convert numbers
+	# 7) lemmatize
+	# 8) stem
+	# 9) remove punctuation
+	# 10) convert numbers
+	# 11) stem
+	# 12) remove punctuation
+	# 13) remove stopwords
 	# Note how some of these steps are repeated. This is because 
 	# previous steps may have introduced conditions that were 
 	# previously handled. However, this order of operations is both
 	# optimal and firm.
 	text = lowercase(text)
+	text = handle_special_numbers(text)
 	text = remove_punctuation(text)
 	text = remove_stopwords(text)
 	text = replace_superscripts(text)
