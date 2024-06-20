@@ -3,6 +3,32 @@
 Description: Provides a text based search for Wikipedia (English only)
 
 
+### Before Proceeding
+
+ - This project was intended to be possible to replicate and run on a consumer level PC
+     - Minimum Hardware Requirements:
+         - 500GB hard drive (SSD preferred)
+         - 8 GB RAM minimum (16+ GB preferred)
+         - Nvidia GPU is preferred for creating vector embeddings
+             - There is some support for Apple Silicon with MPS too
+         - 4 core CPU (8+ cores preferred)
+ - That being said, this project is very demanding in regards to the resources it uses.
+     - Storage
+         - Expect to use around 30GB of storage for downloading the compressed dataset from Wikipedia (see WikipediaEnDownload submodule).
+         - Add 128GB to that storage overhead for the extracted/decompressed dataset (also see WikipediaEnDownload submodule).
+         - And add another 10GB of storage for the necessary environment libraries/packages.
+     - Compute (CPU, GPU, RAM)
+         - If you just want to use the search functions, I have linked where you can download the necssary data below.
+         - Running the preprocessing necessary for the program to work is incredibly taxing depending on your hardware.
+             - Generally more is better. More CPU cores, more GPU VRAM, more RAM, etc.
+             - I ran a lot of the preprocessing for the sake of speed/time on my own server. The server has more room for expansion of its resources but it was not during this project. The server's hardware config at the time of writing this:
+                 - 2x Intel Xeon with total of 56 cores
+                 - 68 GB RAM
+                 - 3x Nvidia P100 GPU cards at 16GB VRAM each
+                 - 1 TB HDD storage
+             - I leveraged multiprocessing with all available cores for the preprocessing work in this repo's `preprocess.py`.
+
+
 ### Setup
 
  - Use either the dockerfile or a virtual environment to setup the necessary environment to run the files.
@@ -88,7 +114,8 @@ Description: Provides a text based search for Wikipedia (English only)
      - Vector preprocessing only
          - Estimated runtime on 16 cores was around hours per file (gpu to cpu override enabled).
          - Task can be either CPU or GPU bound.
-         - Vector metadata around per file.
+         - Cannot isolate the size of the vector data per file (both in number of vectors or size in Bytes).
+             - Memory resources exhausted (OOM) on my server (has 68 GB) when running the above configuration (16 cores). This has introduced the need to dynamically loading the data into the vector DB (lancedb) during preprocessing (instead of waiting for the full file to be processed) without causing any issues with threading/race conditions.
 
 
 ### Parsing Documents & Queries
@@ -167,6 +194,20 @@ word: [document_1_path, document_2_path, ... , document_n_path]
              - sentence-transformers/all-MiniLM-L6-v1
              - sentence-transformers/all-MiniLM-L12-v2
              - sentence-transformers/all-MiniLM-L12-v1
+     - UPDATE 06/19/2024:
+         - I ran out of space on my server when generating embeddings for just 1 file. Embedding process was about 75% complete and generated 187 GB of data in the `lancedb` vector DB when it stopped. My server has a 1 TB hard drive but there are other projects and files stored on the machine.
+         - Performing a napkin calculation I found that embedding all vectors in the dataset would take around 2.2 TB (this was just the embeddings, not the additional metadata that is stored with the embedding in the vector DB).
+             - 1 (BERT) embedding has 768 dims
+                 - Embedding uses float32 dtype which is 32-bit floating point number which equates to 4 bytes.
+                 - The total embedding storage overhead is 4 x 768 or 3,072 bytes.
+             - 1 file had around 4 million vectors.
+                 - 1 file also had 150,000 articles.
+             - There are just shy of 200 files.
+             - Total formula:
+                 - 3,072 bytes per embeding vector x 4,000,000 vectors per file x 200 files
+                 - Divide accordingly to get conversion to TB, GB, MB, KB units.
+         - Acquiring a 4 TB hard drive is not a challenge but that level of storage defeats the goal of the project to be able to run on a consumer grade computer.
+             - As such, I have elected to stop pursuing this component of the project at this time. The creation of the vector database is just not worth the compute/energy and storage. I will only implement the TF-IDF/BM25 and the Rerank search engines.
  - Rerank search with TF-IDF/BM25 and vector search
      - Combination of methods above.
 

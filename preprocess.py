@@ -1,6 +1,7 @@
 # preprocess.py
 # Further preprocess the wikipedia data. This will be important for 
-# classical search algorithms like TF-IDF and BM25.
+# classical search algorithms like TF-IDF and BM25 as well as vector
+# search.
 # Python 3.9
 # Windows/MacOS/Linux
 
@@ -20,14 +21,11 @@ from typing import List, Dict, Tuple
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag, NavigableString
-import faiss
 import lancedb
-from lancedb.pydantic import Vector, LanceModel
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
 from num2words import num2words
-import numpy as np
 import requests
 import torch
 from tqdm import tqdm
@@ -924,7 +922,7 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 
 			# Add chunk metadata to the vector database. Should be on
 			# "append" mode by default.
-			table.add(chunk_metadata)
+			table.add(chunk_metadata, mode="append")
 	
 	# Return the mappings and metadata.
 	return doc_to_word, word_to_doc, vector_metadata
@@ -1043,8 +1041,8 @@ def main() -> None:
 	schema = pa.schema([
 		pa.field("file", pa.utf8()),
 		pa.field("sha1", pa.utf8()),
-		pa.field("text_idx", pa.int64()),
-		pa.field("text_len", pa.int64()),
+		pa.field("text_idx", pa.int32()),
+		pa.field("text_len", pa.int32()),
 		pa.field("vector", pa.list_(pa.float32(), dims))
 	])
 
@@ -1196,7 +1194,7 @@ def main() -> None:
 			# greater than 4. This is because the device setting is
 			# quite rudimentary with this system. I don't know
 			# 1) How much VRAM each instance of a model would take up 
-			#	vs the amount of VRAM available (4Gb, 8Gb, 12GB, ...).
+			#	vs the amount of VRAM available (4GB, 8GB, 12GB, ...).
 			# 2) How transformers or pytorch would have to be 
 			#	configured to balance the number of model instances on
 			#	each process against multiple GPUs on device.
@@ -1250,37 +1248,39 @@ def main() -> None:
 		
 		# Print size of data and how many entries are in each data
 		# structure.
-		if d2w_gb > 1:
-			print(f"Document to word map has reached over 1GB in size ({round(d2w_gb, 2)} GB)")
-		elif d2w_mb > 1:
-			print(f"Document to word map has reached over 1MB in size ({round(d2w_mb, 2)} MB)")
-		elif d2w_kb > 1:
-			print(f"Document to word map has reached over 1KB in size ({round(d2w_kb, 2)} KB)")
-		else:
-			print(f"Document to word map size {d2w_size} Bytes)")
-		print(f"Number of entries in document to word map: {len(list(doc_to_word.keys()))}")
+		if args.bow:
+			if d2w_gb > 1:
+				print(f"Document to word map has reached over 1GB in size ({round(d2w_gb, 2)} GB)")
+			elif d2w_mb > 1:
+				print(f"Document to word map has reached over 1MB in size ({round(d2w_mb, 2)} MB)")
+			elif d2w_kb > 1:
+				print(f"Document to word map has reached over 1KB in size ({round(d2w_kb, 2)} KB)")
+			else:
+				print(f"Document to word map size {d2w_size} Bytes")
+			print(f"Number of entries in document to word map: {len(list(doc_to_word.keys()))}")
 
-		if w2d_gb > 1:
-			print(f"Word to document map has reached over 1GB in size ({round(w2d_gb, 2)} GB)")
-		elif w2d_mb > 1:
-			print(f"Word to document map has reached over 1MB in size ({round(w2d_mb, 2)} MB)")
-		elif w2d_kb > 1:
-			print(f"Word to document map has reached over 1KB in size ({round(w2d_kb, 2)} KB)")
-		else:
-			print(f"Word to document map size {w2d_size} Bytes)")
-		print(f"Number of entries in word to document map: {len(list(word_to_doc.keys()))}")
+			if w2d_gb > 1:
+				print(f"Word to document map has reached over 1GB in size ({round(w2d_gb, 2)} GB)")
+			elif w2d_mb > 1:
+				print(f"Word to document map has reached over 1MB in size ({round(w2d_mb, 2)} MB)")
+			elif w2d_kb > 1:
+				print(f"Word to document map has reached over 1KB in size ({round(w2d_kb, 2)} KB)")
+			else:
+				print(f"Word to document map size {w2d_size} Bytes")
+			print(f"Number of entries in word to document map: {len(list(word_to_doc.keys()))}")
 
-		if vm_gb > 1:
-			print(f"Vector metadata list has reached over 1GB in size ({round(vm_gb, 2)} GB)")
-		elif vm_mb > 1:
-			print(f"Vector metadata list has reached over 1MB in size ({round(vm_mb, 2)} MB)")
-		elif vm_kb > 1:
-			print(f"Vector metadata list has reached over 1KB in size ({round(vm_kb, 2)} KB)")
-		else:
-			print(f"Vector metadata list size {vm_size} Bytes)")
-		print(f"Number of entries in vector metadata list: {len(vector_metadata)}")
+		if args.vector:
+			if vm_gb > 1:
+				print(f"Vector metadata list has reached over 1GB in size ({round(vm_gb, 2)} GB)")
+			elif vm_mb > 1:
+				print(f"Vector metadata list has reached over 1MB in size ({round(vm_mb, 2)} MB)")
+			elif vm_kb > 1:
+				print(f"Vector metadata list has reached over 1KB in size ({round(vm_kb, 2)} KB)")
+			else:
+				print(f"Vector metadata list size {vm_size} Bytes")
+			print(f"Number of entries in vector metadata list: {len(vector_metadata)}")
 
-		exit()
+		# exit()
 
 		# Write metadata to the respective files.
 		if len(list(doc_to_word.keys())) > 0:
@@ -1298,9 +1298,6 @@ def main() -> None:
 			)
 			with open(path, "w+") as w2d_f:
 				json.dump(word_to_doc, w2d_f, indent=4)
-
-		# TODO:
-		# Implement writing vector metadata to vector DB with lancedb.
 
 		# Update progress files as necessary.
 		if args.bow:
