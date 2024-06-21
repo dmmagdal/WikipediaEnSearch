@@ -297,20 +297,21 @@ def convert_numbers(text: str) -> str:
 	# 		if word.isdigit()
 	# 	]
 	# )
+	MAX_LEN = 307
+	SIZE = MAX_LEN - 1
 	text = ""
 	for word in words:
 		if word.isdigit():
-			if len(word) < 307:
+			if len(word) < MAX_LEN:
 				word = num2words(int(word))
 			else:
 				# Handles the edge case where the numerical text is 
-				# greater than 1 x 10^307. Break apart the number and
-				# process each half before merging them together.
-				# half_length = len(word) // 2
-				# word = num2words(int(word[:half_length])) + " " + num2words(int(word[half_length:]))
+				# greater than 1 x 10^307. Break apart the number into
+				# chunks (of size/length 306 digits - NOT 307) and 
+				# process each chunk before merging them together.
 				chunked_number = [
-					num2words(word[i:i + 306]) 
-					for i in range(0, len(word), 306)
+					num2words(word[i:i + SIZE]) 
+					for i in range(0, len(word), SIZE)
 				]
 				word = ' '.join(chunked_number)
 
