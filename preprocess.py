@@ -306,8 +306,13 @@ def convert_numbers(text: str) -> str:
 				# Handles the edge case where the numerical text is 
 				# greater than 1 x 10^307. Break apart the number and
 				# process each half before merging them together.
-				half_length = len(word) // 2
-				word = num2words(int(word[:half_length])) + " " + num2words(int(word[half_length:]))
+				# half_length = len(word) // 2
+				# word = num2words(int(word[:half_length])) + " " + num2words(int(word[half_length:]))
+				chunked_number = [
+					num2words(word[i:i + 306]) 
+					for i in range(0, len(word), 306)
+				]
+				word = ' '.join(chunked_number)
 
 		text = text + " " + word
 
@@ -1177,12 +1182,16 @@ def main() -> None:
 		if os.path.exists(progress_file_bow):
 			with open(progress_file_bow, "r") as pf1: 
 				bow_progress = pf1.readlines()
+			bow_progress = [file.rstrip("\n") for file in bow_progress]
 		else:
 			open(progress_file_bow, "w+").close()
 
 		if os.path.exists(progress_file_vector):
 			with open(progress_file_vector, "r") as pf2: 
 				vector_progress = pf2.readlines()
+			vector_progress = [
+				file.rstrip("\n") for file in vector_progress
+			]
 		else:
 			open(progress_file_vector, "w+").close()
 
