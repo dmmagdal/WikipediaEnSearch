@@ -131,16 +131,17 @@ def convert():
 	# with open("config.json", "r") as config_f:
 	# 	config = json.load(config_f)
 
-	doc_to_words_path = "./metadata/bag_of_words"
+	doc_to_words_path = "./metadata/bag_of_words/word_to_docs"
 
 	if not os.path.exists(doc_to_words_path):
 		print("Path to doc_to_words JSON file does not exist")
 		return
 
-	json_files = [
-		file for file in os.listdir(doc_to_words_path) 
+	json_files = sorted([
+		os.path.join(doc_to_words_path, file) 
+		for file in os.listdir(doc_to_words_path) 
 		if file.endswith(".json")
-	]
+	])
 
 	# Iterate through each file.
 	for file in tqdm(json_files):
@@ -160,7 +161,7 @@ def convert():
 
 		# Write the data back to the JSON file.
 		with open(file, "w") as w2d_fw:
-			json.dump(w2d_fw, data, indent=4)
+			json.dump(data, w2d_fw, indent=4)
 
 		# Convert the JSON data to string and hash it.
 		data_str = json.dumps(data, sort_keys=True)
