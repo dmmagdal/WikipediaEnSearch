@@ -21,3 +21,6 @@ preprocess_state_vector.txt
 
 # xml test file(s)
 *.xml
+
+# test data for test scripts
+pages-articles-multistream10*

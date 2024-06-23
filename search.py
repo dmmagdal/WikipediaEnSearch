@@ -94,10 +94,31 @@ class BM25:
 
 class TF_IDF:
 	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
+		# Load the compiled mappings.
+		w2d_folder_path = os.path.join(bow_dir, "word_to_docs")
+		d2w_folder_path = os.path.join(bow_dir, "doc_to_words")
 
-		# Load 
-		self.words_to_docs = []
-		self.docs_to_words = []
+		w2d_files = [
+			file for file in os.listdir(w2d_folder_path)
+			if file.endswith(".json")
+		]
+		d2w_files = [
+			file for file in os.listdir(d2w_folder_path)
+			if file.endswith(".json")
+		]
+
+		self.words_to_docs = dict()
+		self.docs_to_words = dict()
+
+		for w2d_file in w2d_files:
+			with open(w2d_file, "r") as f1:
+				self.words_to_docs.update(json.load(f1))
+		
+		for d2w_file in d2w_files:
+			with open(d2w_file, "r") as f2:
+				self.words_to_docs.update(json.load(f2))
+
+		self.srt = srt
 		pass
 
 

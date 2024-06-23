@@ -26,17 +26,31 @@ def test() -> None:
 	rerank = ReRankSearch()
 	bm25 = BM25()
 	tf_idf = TF_IDF()
-	vector_search = VectorSearch()
-
+	# vector_search = VectorSearch()
+	search_engines = [
+		("tf-idf", tf_idf), ("bm25", bm25), ("rerank", rerank)
+	]
 
 	###################################################################
 	# EXACT PASSAGE RECALL
 	###################################################################
+	# Given passages that are directly pulled from random articles, 
+	# determine if the passage each search engine retrieves is correct.
+	query_passages = []
 
+	for name, engine in search_engines:
+		pass
 
 	###################################################################
 	# GENERAL QUERY
 	###################################################################
+	# Given passages that have some relative connection to random 
+	# articles,  determine if the passage each search engine retrieves 
+	# is correct.
+	query_text = []
+	
+	for name, engine in search_engines:
+		pass
 	pass
 
 
