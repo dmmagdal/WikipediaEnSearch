@@ -9,8 +9,6 @@
 
 import hashlib
 import json
-import os
-import sys
 
 import msgpack
 
@@ -41,6 +39,13 @@ def main():
 	source_file = "pages-articles-multistream10_288ec473bfbc27d7686cfee3396c7ea4db31c2f7b2b967778e1e3a21c08a583b_w2d.json"
 	# target_file = "pages-articles-multistream10_288ec473bfbc27d7686cfee3396c7ea4db31c2f7b2b967778e1e3a21c08a583b.msgpack"
 	target_file = "pages-articles-multistream10_288ec473bfbc27d7686cfee3396c7ea4db31c2f7b2b967778e1e3a21c08a583b_w2d.msgpack"
+
+	# NOTE:
+	# File sizes (du -sh).
+	# 443M    pages-articles-multistream10_288ec473bfbc27d7686cfee3396c7ea4db31c2f7b2b967778e1e3a21c08a583b.json
+	# 177M    pages-articles-multistream10_288ec473bfbc27d7686cfee3396c7ea4db31c2f7b2b967778e1e3a21c08a583b.msgpack
+	# 3.5G    pages-articles-multistream10_288ec473bfbc27d7686cfee3396c7ea4db31c2f7b2b967778e1e3a21c08a583b_w2d.json
+	# 3.3G    pages-articles-multistream10_288ec473bfbc27d7686cfee3396c7ea4db31c2f7b2b967778e1e3a21c08a583b.msgpack
 	
 	# Load data to dict object.
 	with open(source_file, "r") as f:
@@ -83,6 +88,38 @@ def main():
 	print(f"Object match: {contents == loaded_contents}")
 	print(f"Hash match: {original_hash == loaded_hash}")
 	print(f"Size match: {original_size == load_size}")
+
+	# TODO: Try to see the overhead & improvements of adding gz/gzip
+	# compression to the msgpack format.
+
+	# NOTE:
+	# This script is to address the issue that the bag-of-words 
+	# metadata is so large in file form (JSON) but not so large when 
+	# reported in memory.
+	#
+	# Apparently the memory usage reporting system that I had developed
+	# was not accurate to being with. I was using sys.getsizeof() but
+	# the caveat is "Only the memory consumption directly attributed to
+	# the object is accounted for, not the memory consumption of 
+	# objects it refers to." 
+	# (source: https://docs.python.org/3.10/library/sys.html#sys.getsizeof)
+	# One way to counter this is to use memray package which is only 
+	# avialable for MacOS & Linux.
+	# (source: https://github.com/bloomberg/memray)
+	# Alternatively, since that component of the preprocessing script 
+	# was for debugging & readability, it may just be removed entirely.
+	# 
+	# There is still the issue of the size of the bag of words mapping 
+	# data in comparison to the orginal text data. There are multiple 
+	# aspects to this issue.
+	# 1) JSON as a file format apparently has a lot of overhead. To 
+	# counter this, I've opted to use msgpack as the file format over
+	# JSON. This is showing a great decrease in file size (for the 
+	# doc to word json above, file size goes from 443 MB with JSON
+	# to 177 MB with msgpack). The downside to msgpack is that the data
+	# is no longer human readable from the file and has to be read into
+	# memory to become human readable again.
+
 
 	# Exit the program.
 	exit(0)
