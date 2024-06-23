@@ -127,16 +127,15 @@ def convert():
 			file.rstrip("\n") for file in current_progress
 		]
 
-	# Load config JSON.
-	# with open("config.json", "r") as config_f:
-	# 	config = json.load(config_f)
-
+	# Isolate path to word_to_docs metadata folder and verify that the
+	# path exists.
 	doc_to_words_path = "./metadata/bag_of_words/word_to_docs"
 
 	if not os.path.exists(doc_to_words_path):
 		print("Path to doc_to_words JSON file does not exist")
 		return
 
+	# Retrieve the list of sorted documents in the metadata folder.
 	json_files = sorted([
 		os.path.join(doc_to_words_path, file) 
 		for file in os.listdir(doc_to_words_path) 
