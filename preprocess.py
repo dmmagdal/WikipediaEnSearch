@@ -22,6 +22,7 @@ from typing import List, Dict, Tuple
 from bs4 import BeautifulSoup
 from bs4.element import Tag, NavigableString
 import lancedb
+import msgpack
 from nltk.corpus import stopwords
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
@@ -119,15 +120,24 @@ def handle_special_numbers(text: str) -> str:
 	circled_digits = {
 		'①': '(1)', '②': '(2)', '③': '(3)', '④': '(4)', '⑤': '(5)',
 		'⑥': '(6)', '⑦': '(7)', '⑧': '(8)', '⑨': '(9)', '⑩': '(10)',
-		'⑪': '(11)', '⑫': '(12)', '⑬': '13', '⑭': '14', '⑮': '(15)',
-		'⑯': '(16)', '⑰': '(17)', '⑱': '18', '⑲': '19', '⑳': '(20)',
-		'㉑': '(21)', '㉒': '(22)', '㉓': '23', '㉔': '24', '㉕': '(25)',
-		'㉖': '(26)', '㉗': '(27)', '㉘': '28', '㉙': '29', '㉚': '(30)',
-		'㉛': '(31)', '㉜': '(32)', '㉝': '33', '㉞': '34', '㉟': '(35)',
-		'㊱': '(36)', '㊲': '(37)', '㊳': '38', '㊴': '39', '㊵': '(40)',
-		'㊶': '(41)', '㊷': '(42)', '㊸': '43', '㊹': '44', '㊺': '(45)',
-		'㊻': '(46)', '㊼': '(47)', '㊽': '48', '㊾': '49', '㊿': '(50)',
-		'⓿': '(0)'
+		'⑪': '(11)', '⑫': '(12)', '⑬': '(13)', '⑭': '(14)', '⑮': '(15)',
+		'⑯': '(16)', '⑰': '(17)', '⑱': '(18)', '⑲': '(19)', '⑳': '(20)',
+		'㉑': '(21)', '㉒': '(22)', '㉓': '(23)', '㉔': '(24)', '㉕': '(25)',
+		'㉖': '(26)', '㉗': '(27)', '㉘': '(28)', '㉙': '(29)', '㉚': '(30)',
+		'㉛': '(31)', '㉜': '(32)', '㉝': '(33)', '㉞': '(34)', '㉟': '(35)',
+		'㊱': '(36)', '㊲': '(37)', '㊳': '(38)', '㊴': '(39)', '㊵': '(40)',
+		'㊶': '(41)', '㊷': '(42)', '㊸': '(43)', '㊹': '(44)', '㊺': '(45)',
+		'㊻': '(46)', '㊼': '(47)', '㊽': '(48)', '㊾': '(49)', '㊿': '(50)',
+		'⓪': '(0)',
+		'⓵': '(1)', '⓶': '(2)', '⓷': '(3)', '⓸': '(4)', '⓹': '(5)',
+		'⓺': '(6)', '⓻': '(7)', '⓼': '(8)', '⓽': '(9)', '⓾': '(10)',
+		'❶': '(1)', '❷': '(2)', '❸': '(3)', '❹': '(4)', '❺': '(5)',
+        '❻': '(6)', '❼': '(7)', '❽': '(8)', '❾': '(9)', '❿': '(10)',
+		'⓫': '(11)', '⓬': '(12)', '⓭': '(13)', '⓮': '(14)', '⓯': '(15)',
+		'⓰': '(16)', '⓱': '(17)', '⓲': '(18)', '⓳': '(19)', '⓴': '(20)',
+		'⓿': '(0)',
+		'➊': '(1)', '➋': '(2)', '➌': '(3)', '➍': '(4)', '➎': '(5)',
+		'➏': '(6)', '➐': '(7)', '➑': '(8)', '➒': '(9)', '➓': '(10)'
 	}
 	
 	# Mapping of parenthesized digits to regular digits
@@ -788,6 +798,7 @@ def merge_mappings(results: List[List]) -> Tuple[Dict]:
 
 		# Iteratively update the word to document dictionary.
 		for key, value in word_to_doc.items():
+			assert isinstance(value, int)
 			if key not in aggr_word_to_doc:
 				aggr_word_to_doc[key] = value
 			else:
@@ -928,10 +939,12 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 			for word in xml_bow:
 				if word in list(word_to_doc.keys()):
 					# word_to_doc[word].append(file)
-					word_to_doc[word].append(file_hash)
+					# word_to_doc[word].append(file_hash)
+					word_to_doc[word] += 1
 				else:
 					# word_to_doc[word] = [file]
-					word_to_doc[word] = [file_hash]
+					# word_to_doc[word] = [file_hash]
+					word_to_doc[word] = 1
 
 			# Update the document to words map.
 			# doc_to_word[file] = xml_word_freq
@@ -1384,16 +1397,30 @@ def main() -> None:
 				d2w_metadata_path, 
 				os.path.basename(file).rstrip('.xml') + ".json"
 			)
+			path_msgpack = os.path.join(
+				d2w_metadata_path,
+				os.path.basename(file).rstrip('.xml') + ".msgpack"
+			)
 			with open(path, "w+") as d2w_f:
 				json.dump(doc_to_word, d2w_f, indent=4)
+			with open(path_msgpack, "wb+") as d2w_f:
+				packed = msgpack.packb(doc_to_word)
+				d2w_f.write(packed)
 
 		if len(list(word_to_doc.keys())) > 0:
 			path = os.path.join(
 				w2d_metadata_path, 
 				os.path.basename(file).rstrip('.xml') + ".json"
 			)
+			path_msgpack = os.path.join(
+				w2d_metadata_path, 
+				os.path.basename(file).rstrip('.xml') + ".msgpack"
+			)
 			with open(path, "w+") as w2d_f:
 				json.dump(word_to_doc, w2d_f, indent=4)
+			with open(path_msgpack, "wb+") as w2d_f:
+				packed = msgpack.packb(word_to_doc)
+				w2d_f.write(packed)
 
 		# Update progress files as necessary.
 		if args.bow:
