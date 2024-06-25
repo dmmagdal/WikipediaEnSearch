@@ -7,73 +7,102 @@
 import os
 import json
 import math
+
 from bs4 import BeautifulSoup
 import faiss
-from transformers import AutoTokenizer
-from preprocess import bow_preprocessing
+import lancedb
+import msgpack
+
+from preprocess import load_model
+from preprocess import bow_preprocessing, vector_preprocessing
 
 
 def load_article_file(path: str):
 	pass
 
 
-class ReRankSearch:
-	def __init__(self, bow_path, index_path, model, max_results=50, srt=None, use_tf_idf=False):
-		# Set class variables.
-		self.bow_dir = bow_path
-		self.index_dir = index_path
-		self.model = model
-		self.max_results = max_results
-		self.srt = srt
-		self.use_tfidf = use_tf_idf
+def load_data_from_msgpack(path: str):
+	with open(path, 'rb') as f:
+		byte_data = f.read()
 
-		# Initialize search objects.
-		self.bm25 = BM25(self.bow_dir, self.srt)
-		self.tf_idf = TF_IDF(self.bow_dir, self.srt)
-		self.vector_search = VectorSearch(self.model, self.index_dir)
+	return msgpack.unpackb(byte_data)
+	
 
-		# Organize search into stages.
-		self.stage1 = self.bm25 if not use_tf_idf else self.tf_idf
-		self.stage2 = self.vector_search
+class BagOfWords: 
+	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
+		# Initialize class variables either from arguments or with
+		# default values.
+		self.bow_dir = bow_dir
+		self.word_to_doc_folder = None
+		self.doc_to_word_folder = None
+		self.word_to_doc_files = None
+		self.doc_to_word_files = None
+		self.corpus_size = 0	# total number of documents (articles)
 
+		# Initialize mapping folder path and files list.
+		self.locate_and_validate_documents(bow_dir)
 
-	def search(self, query, max_results=50):
-		# Pass the search query to the first stage.
-		stage_1_results = self.stage1.search(
-			query, max_results=max_results
-		)
-
-		# Return the first stage search results if the results are empty.
-		if len(stage_1_results) == 0:
-			return stage_1_results
-
-		document_ids = [
-			result["document_path"] for result in stage_1_results
+		# Verify that the class variables that were initialized as None
+		# by default are no longer None.
+		initialized_variables = [
+			self.word_to_doc_folder, self.doc_to_word_folder,
+			self.word_to_doc_files, self.doc_to_word_files
 		]
+		assert None not in initialized_variables,\
+			"Some variables were not initialized properly"
+		
+		# Initialize the corpus size.
+		self.corpus_size = self.get_number_of_documents()
 
-		# From the first stage, isolate the document paths to target in
-		# the vector search.
-		stage_2_results = self.stage2.search(
-			query, max_results=max_results, document_ids=document_ids
-		)
-
-		# Return the search results from the second stage.
-		return stage_2_results
+		# Verify that the corpus size is not 0.
+		assert self.corpus_size != 0, \
+			"Could not count the number of documents (articles) in the corpus. Corpus size is 0."
 
 
-class BM25:
+	def locate_and_validate_documents(self, bow_dir):
+		# Initialize path to word to document and document to word 
+		# folders.
+		self.word_to_doc_folder = os.path.join(bow_dir, 'word_to_docs')
+		self.doc_to_word_folder = os.path.join(bow_dir, 'doc_to_words')
+
+		# Verify that the paths exist.
+		assert os.path.exists(self.word_to_doc_folder) and os.path.isdir(self.word_to_doc_folder),\
+			f"Expected path to word to documents folder to exist: {self.word_to_doc_folder}"
+		assert os.path.exists(self.doc_to_word_folder) and os.path.isdir(self.doc_to_word_folder),\
+			f"Expected path to document to words folder to exist: {self.doc_to_word_folder}"
+		
+		# Initialize the list of files for each mapping folder.
+		self.word_to_doc_files = [
+			os.path.join(self.word_to_doc_folder, file)
+			for file in os.listdir(self.word_to_doc_folder)
+			if file.endswith(".msgpack")
+		]
+		self.doc_to_word_files = [
+			os.path.join(self.doc_to_word_folder, file)
+			for file in os.listdir(self.doc_to_word_folder)
+			if file.endswith(".msgpack")
+		]
+		
+		# Verify that the list of files for each mapping folder is not
+		# empty.
+		assert len(self.word_to_doc_files) != 0,\
+			f"Detected word to documents folder {self.word_to_doc_folder} to have not supported files"
+		assert len(self.word_to_doc_files) != 0,\
+			f"Detected document to words folder {self.doc_to_word_folder} to have not supported files"
+		
+
+	def get_number_of_documents(self):
+		counter = 0
+		for file in self.doc_to_word_files:
+			doc_to_words = load_data_from_msgpack(file)
+			counter += len(list(doc_to_words.keys()))
+		
+		return counter
+
+
+class BM25(BagOfWords):
 	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
 
-		doc_to_word = dict()
-		word_to_doc = dict()
-
-		# Compute corpus size (number of documents) and average
-		# document length.
-		self.docs = list(doc_to_word.keys())
-		self.num_docs = len(self.docs)
-		self.avg_doc_len = sum([
-			sum(doc_to_word[doc].values()) for doc in self.docs
-		]) / self.num_docs
 		pass
 
 
@@ -92,31 +121,9 @@ class BM25:
 		pass
 
 
-class TF_IDF:
+class TF_IDF(BagOfWords):
 	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
-		# Load the compiled mappings.
-		w2d_folder_path = os.path.join(bow_dir, "word_to_docs")
-		d2w_folder_path = os.path.join(bow_dir, "doc_to_words")
 
-		w2d_files = [
-			file for file in os.listdir(w2d_folder_path)
-			if file.endswith(".json")
-		]
-		d2w_files = [
-			file for file in os.listdir(d2w_folder_path)
-			if file.endswith(".json")
-		]
-
-		self.words_to_docs = dict()
-		self.docs_to_words = dict()
-
-		for w2d_file in w2d_files:
-			with open(w2d_file, "r") as f1:
-				self.words_to_docs.update(json.load(f1))
-		
-		for d2w_file in d2w_files:
-			with open(d2w_file, "r") as f2:
-				self.words_to_docs.update(json.load(f2))
 
 		self.srt = srt
 		pass
@@ -257,3 +264,47 @@ class VectorSearch:
 			pass
 
 		pass
+
+
+class ReRankSearch:
+	def __init__(self, bow_path, index_path, model, max_results=50, srt=None, use_tf_idf=False):
+		# Set class variables.
+		self.bow_dir = bow_path
+		self.index_dir = index_path
+		self.model = model
+		self.max_results = max_results
+		self.srt = srt
+		self.use_tfidf = use_tf_idf
+
+		# Initialize search objects.
+		self.bm25 = BM25(self.bow_dir, self.srt)
+		self.tf_idf = TF_IDF(self.bow_dir, self.srt)
+		self.vector_search = VectorSearch(self.model, self.index_dir)
+
+		# Organize search into stages.
+		self.stage1 = self.bm25 if not use_tf_idf else self.tf_idf
+		self.stage2 = self.vector_search
+
+
+	def search(self, query, max_results=50):
+		# Pass the search query to the first stage.
+		stage_1_results = self.stage1.search(
+			query, max_results=max_results
+		)
+
+		# Return the first stage search results if the results are empty.
+		if len(stage_1_results) == 0:
+			return stage_1_results
+
+		document_ids = [
+			result["document_path"] for result in stage_1_results
+		]
+
+		# From the first stage, isolate the document paths to target in
+		# the vector search.
+		stage_2_results = self.stage2.search(
+			query, max_results=max_results, document_ids=document_ids
+		)
+
+		# Return the search results from the second stage.
+		return stage_2_results
