@@ -325,3 +325,8 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - [string](https://docs.python.org/3.9/library/string.html)
      - [shutil](https://docs.python.org/3.9/library/shutil.html)
      - [typing](https://docs.python.org/3.9/library/typing.html)
+ - Cython:
+     - Python documentation on [extending python with c/c++](https://docs.python.org/3.10/extending/extending.html)
+     - Cython [documentation](https://cython.readthedocs.io/en/stable/src/tutorial/cython_tutorial.html)
+     - Sentdex [youtube video](https://youtu.be/mXuEoqK4bEc?si=igqgb5OFgw7hebEE)
+     - Sentdex tutorial [blog post](https://pythonprogramming.net/introduction-and-basics-cython-tutorial/)
