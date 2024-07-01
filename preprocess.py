@@ -310,10 +310,28 @@ def convert_numbers(text: str) -> str:
 	# 		if word.isdigit()
 	# 	]
 	# )
+
+	# Define maximum number string length (10 ^ MAX_LEN).
 	MAX_LEN = 307
 	SIZE = MAX_LEN - 1
+
+	# Define the Unicode range for New Tai Lue digits.
+	TAI_LUE_DIGIT_START = 0x19D0
+	TAI_LUE_DIGIT_END = 0x19D9
+
 	text = ""
 	for word in words:
+		# Check if the word is text within the unicode for new tai lue
+		# digits.
+		is_new_tai_lue_digit = any(
+			TAI_LUE_DIGIT_START <= ord(char) <= TAI_LUE_DIGIT_END 
+			for char in word
+		)
+		if word.isdigit() and is_new_tai_lue_digit:
+			# Skip using num2words module if the word evaluates to
+			# unicode in New Tai Lue digits.
+			continue
+
 		if word.isdigit():
 			if len(word) < MAX_LEN:
 				word = num2words(int(word))
