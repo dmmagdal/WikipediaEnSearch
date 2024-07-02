@@ -330,3 +330,12 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Cython [documentation](https://cython.readthedocs.io/en/stable/src/tutorial/cython_tutorial.html)
      - Sentdex [youtube video](https://youtu.be/mXuEoqK4bEc?si=igqgb5OFgw7hebEE)
      - Sentdex tutorial [blog post](https://pythonprogramming.net/introduction-and-basics-cython-tutorial/)
+ - LanceDB
+     - Quick Start [documentation](https://lancedb.github.io/lancedb/basic/)
+     - Full Text Search [documentation](https://lancedb.github.io/lancedb/fts/)
+     - Working with Tables [documentation](https://lancedb.github.io/lancedb/guides/tables/)
+     - ANN Indexes [documentation](https://lancedb.github.io/lancedb/ann_indexes/)
+         - Primarily for the section on disk-based indexes
+     - Storage [docoumentation](https://lancedb.github.io/lancedb/concepts/storage/)
+         - Primarily for local disk storage
+     - FAQs [documentation](https://lancedb.github.io/lancedb/faq/)
