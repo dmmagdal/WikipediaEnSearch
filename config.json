@@ -1,12 +1,12 @@
 {
     "sparse-retrieval-threshold": -1.0,
     "bm25_config": {
-        "doc_to_words": "./bag_of_words/doc_to_words",
-        "word_to_docs": "./bag_of_words/word_to_docs"
+        "doc_to_words": "./metadata/bag_of_words/doc_to_words",
+        "word_to_docs": "./metadata/bag_of_words/word_to_docs"
     },
     "tf-idf_config": {
-        "doc_to_words": "./bag_of_words/doc_to_words",
-        "word_to_docs": "./bag_of_words/word_to_docs"
+        "doc_to_words": "./metadata/bag_of_words/doc_to_words",
+        "word_to_docs": "./metadata/bag_of_words/word_to_docs"
     },
     "vector-search_config": {
         "model": "bert",

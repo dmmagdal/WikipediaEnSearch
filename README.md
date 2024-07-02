@@ -17,6 +17,10 @@ Description: Provides a text based search for Wikipedia (English only)
          - Expect to use around 30GB of storage for downloading the compressed dataset from Wikipedia (see WikipediaEnDownload submodule).
          - Add 128GB to that storage overhead for the extracted/decompressed dataset (also see WikipediaEnDownload submodule).
          - And add another 10GB of storage for the necessary environment libraries/packages.
+         - And add another 85GB of storage for the bag-of-words metadata (depending on the file format).
+             - JSON: 60.7GB (57 GB doc-to-words + 3.7 GB word-to-docs)
+             - msgpack: 25GB (23 GB doc-to-words + 1.9 GB word-to-docs)
+         - And finally, add another 5GB of storage for the embedding module.
      - Compute (CPU, GPU, RAM)
          - If you just want to use the search functions, I have linked where you can download the necssary data below.
          - Running the preprocessing necessary for the program to work is incredibly taxing depending on your hardware.
@@ -26,7 +30,7 @@ Description: Provides a text based search for Wikipedia (English only)
                  - 68 GB RAM
                  - 3x Nvidia P100 GPU cards at 16GB VRAM each
                  - 1 TB HDD storage
-             - I leveraged multiprocessing with all available cores for the preprocessing work in this repo's `preprocess.py`.
+             - I leveraged multiprocessing with all available cores for the preprocessing work in this repo's `preprocess.py`. It took around 2 weeks to complete the preprocessing step with all available cores.
 
 
 ### Setup
@@ -41,6 +45,13 @@ Description: Provides a text based search for Wikipedia (English only)
  - Docker
      - Build: `docker build -t wiki-search -f Dockerfile .`
      - Run: `docker run -v {$pwd}:/wiki wiki-search`
+ - Download the data
+     - Wikipedia XML
+         - Contains the actual wikipedia articles aggregated into XML files.
+         - Huggingface [dataset link](https://huggingface.co/datasets/dmmagdal/enwiki-2024-04-20-xml)
+     - Wikipedia metadata (needed for search)
+         - Recommend you download only the `.msgpack` files as they have a smaller storage footprint than the JSON.
+         - Huggingface [dataset link](https://huggingface.co/datasets/dmmagdal/enwiki-2024-04-20-metadata)
 
 
 ### Usage
@@ -102,6 +113,7 @@ Description: Provides a text based search for Wikipedia (English only)
  - Got ascii art from [here](https://patorjk.com/software/taag/#p=display&f=Sub-Zero&t=Wikipedia%20%0ASearch)
  - Dev/performance notes:
      - Despite being designed to scale but also run from consumer level hardware, the data preprocessing is NOT ideal for consumer hardware.
+     - Consider also adding C++ code that serves as extensions and accelerates certain areas such as xml parsing, file loading, and basic dictionary operations.
      - Bag of words + vector preprocessing
          - Could not run bag of words and vector preprocessing at the same time. Managed to OOM when the data was almost completely done. Current server hardware is not sufficient for this but it's interesting to see those limits.
          - Estimated runtime on 16 cores was around 24 hours per file.
@@ -309,6 +321,8 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - tokenizer encode text [documentation](https://huggingface.co/docs/tokenizers/v0.13.4.rc2/en/api/tokenizer#tokenizers.Tokenizer.encode)
      - tokenizer decode text [documentation](https://huggingface.co/docs/tokenizers/v0.13.4.rc2/en/api/tokenizer#tokenizers.Tokenizer.decode)
      - tokenizer padding text [documentation](https://huggingface.co/docs/transformers/en/pad_truncation#padding-and-truncation)
+     - Uploading datasets to huggingface hub [documentation](https://huggingface.co/docs/datasets/upload_dataset)
+         - Using `huggingface-cli` [documentation](https://huggingface.co/docs/huggingface_hub/main/en/guides/cli#upload-to-a-dataset-or-space)
  - Sentence Transformers
      - sentence transformers in the huggingface hub [blog post](https://huggingface.co/blog/sentence-transformers-in-the-hub)
      - [documentation](https://www.sbert.net/)
