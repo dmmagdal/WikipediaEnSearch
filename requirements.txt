@@ -9,3 +9,5 @@ num2words==0.5.12
 requests==2.31.0
 transformers==4.31.0
 torch==2.1.0
+torchaudio==2.1.0
+torchvision==0.16.0
