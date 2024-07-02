@@ -315,6 +315,11 @@ def convert_numbers(text: str) -> str:
 	MAX_LEN = 307
 	SIZE = MAX_LEN - 1
 
+	# NOTE:
+	# The Unicode range for New Tai Lue is 0x1980 to 0x19DF with the
+	# range for digits being 19D0 to 19DF (source: 
+	# https://en.wikipedia.org/wiki/New_Tai_Lue_(Unicode_block)).
+
 	# Define the Unicode range for New Tai Lue digits.
 	TAI_LUE_DIGIT_START = 0x19D0
 	TAI_LUE_DIGIT_END = 0x19D9
