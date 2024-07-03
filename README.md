@@ -300,6 +300,16 @@ word: [document_1_path, document_2_path, ... , document_n_path]
          - [npm](https://www.npmjs.com/package/@xenova/transformers)
 
 
+### Misc Links
+
+ - Chunk Size Matters [blog post](https://www.mattambrogi.com/posts/chunk-size-matters/)
+     - Relevant to how chunking can affect RAG systems.
+     - Argument for smaller chunk sizes (128 tokens seemed to be the best performing in the article).
+ - Vector Databases [blog post](https://thedataquarry.com/posts/vector-db-1/#key-takeaways)
+     - Great for exploring vector DB options
+     - Some features have had time to develop since the time the article was written/published (2023)
+
+
 ### References
 
  - BeautifulSoup [documentation](https://beautiful-soup-4.readthedocs.io/en/latest/)
@@ -344,6 +354,7 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Cython [documentation](https://cython.readthedocs.io/en/stable/src/tutorial/cython_tutorial.html)
      - Sentdex [youtube video](https://youtu.be/mXuEoqK4bEc?si=igqgb5OFgw7hebEE)
      - Sentdex tutorial [blog post](https://pythonprogramming.net/introduction-and-basics-cython-tutorial/)
+     - LinkedIn [blog post](https://www.linkedin.com/pulse/improving-python-performance-cython-harold-kasperink-yttse/)
  - LanceDB
      - Quick Start [documentation](https://lancedb.github.io/lancedb/basic/)
      - Full Text Search [documentation](https://lancedb.github.io/lancedb/fts/)

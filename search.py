@@ -7,6 +7,7 @@
 import os
 import json
 import math
+from typing import List, Dict
 
 from bs4 import BeautifulSoup
 import faiss
@@ -26,10 +27,21 @@ def load_data_from_msgpack(path: str):
 		byte_data = f.read()
 
 	return msgpack.unpackb(byte_data)
+
+
+def load_data_from_json(path: str):
+	with open(path, "r") as f:
+		return json.load(f)
+	
+
+def load_data_file(path: str, use_json: bool = False):
+	if use_json:
+		return load_data_from_json(path)
+	return load_data_from_msgpack(path)
 	
 
 class BagOfWords: 
-	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
+	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
 		# Initialize class variables either from arguments or with
 		# default values.
 		self.bow_dir = bow_dir
@@ -38,6 +50,9 @@ class BagOfWords:
 		self.word_to_doc_files = None
 		self.doc_to_word_files = None
 		self.corpus_size = 0	# total number of documents (articles)
+		self.use_json = use_json
+		self.extension = ".json" if use_json else ".msgpack"
+		self.valid_aggr = ["sum", "mean"]
 
 		# Initialize mapping folder path and files list.
 		self.locate_and_validate_documents(bow_dir)
@@ -55,7 +70,7 @@ class BagOfWords:
 		self.corpus_size = self.get_number_of_documents()
 
 		# Verify that the corpus size is not 0.
-		assert self.corpus_size != 0, \
+		assert self.corpus_size != 0,\
 			"Could not count the number of documents (articles) in the corpus. Corpus size is 0."
 
 
@@ -75,12 +90,12 @@ class BagOfWords:
 		self.word_to_doc_files = [
 			os.path.join(self.word_to_doc_folder, file)
 			for file in os.listdir(self.word_to_doc_folder)
-			if file.endswith(".msgpack")
+			if file.endswith(self.extension)
 		]
 		self.doc_to_word_files = [
 			os.path.join(self.doc_to_word_folder, file)
 			for file in os.listdir(self.doc_to_word_folder)
-			if file.endswith(".msgpack")
+			if file.endswith(self.extension)
 		]
 		
 		# Verify that the list of files for each mapping folder is not
@@ -98,6 +113,70 @@ class BagOfWords:
 			counter += len(list(doc_to_words.keys()))
 		
 		return counter
+	
+
+	def compute_tf(self, doc_to_words: Dict, words: List[str]):
+		# total_word_count, word_freq
+		# doc, word
+		doc_tf = dict()
+		word_freq_map = dict()
+		word_vec = []
+
+		# Iterate through each document.
+		for doc in doc_to_words:
+			# Initialize the document's word vector.
+			word_vec = []
+
+			# Extract the document owrd frequencies.
+			word_freq_map = doc_to_words[doc]
+
+			# Compute total word count.
+			total_word_count = sum(
+				[value for value in word_freq_map.values()]
+			)
+
+			# Compute the term frequency accordingly and add it to the 
+			# document's word vector
+			for word in words:
+				if word in word_freq_map:
+					word_freq = word_freq_map[word]
+					word_vec.append(word_freq / total_word_count)
+				else:
+					word_vec.append(0)
+
+			doc_tf[doc] = word_vec
+			
+		# Return the dictionary of the document term frequency word
+		# vectors.
+		return doc_tf
+	
+
+	def compute_idf(self, words: List[str]):
+		# Initialize a dictionary containing the mappings of query 
+		# words to the total count of how many articles each appears 
+		# in.
+		word_count = {word: 0 for word in words}
+
+		# Iterate through each file.
+		for file in self.word_to_doc_files:
+			# Load the word to doc mappings from file.
+			word_to_docs = load_data_file(file, use_json=self.use_json)
+
+			# Iterate through each word. Update the total count for
+			# each respective word if applicable.
+			for word in words:
+				if word in word_to_docs:
+					word_count[word] += word_to_docs[word]
+
+		# Compute inverse document frequency for each term.
+		# return [
+		# 	math.log(self.corpus_size / word_count[word])
+		# 	for word in words
+		# ]
+		return {
+			word: math.log(self.corpus_size / word_count[word])
+			for word in words
+		}
 
 
 class BM25(BagOfWords):
@@ -122,10 +201,11 @@ class BM25(BagOfWords):
 
 
 class TF_IDF(BagOfWords):
-	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
+	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
 
 
 		self.srt = srt
+		self.use_json = use_json
 		pass
 
 
@@ -196,6 +276,56 @@ class TF_IDF(BagOfWords):
 
 		# Return the list.
 		return sorted_list
+	
+
+	def compute_tfidf(self, words: List[str]):
+		tf_idf = dict()
+
+		# Iterate through all files to get IDF. Compute only once, not per file.
+		word_idf = self.compute_idf(words)
+
+		# Compute TF-IDF for every article.
+		for file in self.doc_to_word_files:
+			# Load the doc to word frequency mappings from file.
+			doc_to_words = load_data_file(file, self.use_json)
+
+			# Compute article TF.
+			# doc_tf = self.compute_tf(doc_to_words, words)
+
+			# Compute TF-IDF.
+
+			# Iterate through each document.
+			for doc in doc_to_words:
+				# Initialize the document's word vector.
+				# word_vec = []
+				word_vec = dict()
+
+				# Extract the document owrd frequencies.
+				word_freq_map = doc_to_words[doc]
+
+				# Compute total word count.
+				total_word_count = sum(
+					[value for value in word_freq_map.values()]
+				)
+
+				# Compute the term frequency accordingly and add it to the 
+				# document's word vector
+				for word in words:
+					if word in word_freq_map:
+						word_freq = word_freq_map[word]
+						# word_vec.append(word_freq / total_word_count)
+						word_vec[word] = word_freq / total_word_count
+					else:
+						# word_vec.append(0)
+						word_vec[word] = 0
+
+				# doc_tf[doc] = word_vec
+				tf_idf[doc] = {
+					word: word_vec[word] * word_idf[word] 
+					for word in words
+				}
+
+		pass
 
 
 class VectorSearch:
