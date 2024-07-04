@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 import faiss
 import lancedb
 import msgpack
+import numpy as np
 
 from preprocess import load_model
 from preprocess import bow_preprocessing, vector_preprocessing
@@ -38,6 +39,14 @@ def load_data_file(path: str, use_json: bool = False):
 	if use_json:
 		return load_data_from_json(path)
 	return load_data_from_msgpack(path)
+
+
+def cosine_similarity(vec1: List[float], vec2: List[float]):
+	np_vec1 = np.array(vec1)
+	np_vec2 = np.array(vec2)
+	cosine = np.dot(np_vec1, np_vec2) /\
+		(np.linalg.norm(np_vec1) * np.linalg.norm(np_vec2))
+	return cosine
 	
 
 class BagOfWords: 
@@ -179,27 +188,6 @@ class BagOfWords:
 		}
 
 
-class BM25(BagOfWords):
-	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
-
-		pass
-
-
-	def search(self, query, max_results=50):
-		'''
-		Conducts a search on the wikipedia data with BM25.
-		@param: query str, the raw text that is being queried from the
-			wikipedia data.
-		@param: max_results (int), the maximum number of search results
-			to return.
-		@return: returns a list of objects where each object contains
-			an article's path, title, retrieved text, and the slices of
-			that text that is being returned (for BM25 and TF-IDF, 
-			those slices values are for the whole article).
-		'''
-		pass
-
-
 class TF_IDF(BagOfWords):
 	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
 
@@ -226,63 +214,46 @@ class TF_IDF(BagOfWords):
 		assert isinstance(max_results, int) and str(max_results).isdigit() and max_results > 0, f"max_results argument is expected to be some int value greater than zero. Recieved {max_results}"
 
 		# Preprocess the search query to a bag of words.
-		words = bow_preprocessing(query)
+		words, word_freq = bow_preprocessing(query, True)
 
-		# Isolate the list of documents and the total number of 
-		# documents.
-		docs = list(self.docs_to_words)
-		num_docs = len(docs)
-
-		# Initialize the mapping from documents to their TF-IDF values.
-		docs_to_tfidf = dict()
-
-		# Iterate throuch each document, computing the TF-IDF for each.
-		for doc in docs:
-			# Initialize the vector sum for all words in the search.
-			vector_sum = 0.0
-
-			# Iterate through every word in the search query.
-			for word in words:
-				# Compute text frequency.
-				word_freq_in_doc = self.docs_to_words[doc][word]
-				total_word_in_doc = sum(
-					self.docs_to_words[doc].values()
-				)	# total words in document = sum of all word frequencies in the document
-				text_freq = word_freq_in_doc / total_word_in_doc
-
-				# Compute inverse document frequency.
-				num_docs_with_word = len(self.words_to_docs[word])
-				inverse_doc_freq = math.log(
-					num_docs / num_docs_with_word
-				)
-
-				# Put together TF-IDF.
-				tf_idf = text_freq * inverse_doc_freq
-				vector_sum += tf_idf
-
-			# Map the total word vector sum to the document.
-			docs_to_tfidf[doc] = vector_sum
+		query_tfidf, corpus_tfidf = self.compute_tfidf(
+			words, word_freq
+		)
 
 		# Convert the dictionary to a sorted list (sorted from largest
 		# to smallest TF-IDF vector sum).
-		sorted_list = sorted(
-			docs_to_tfidf.items(), 
-			key=lambda item: item[1], 
-			reverse=True
-		)
+		# sorted_list = sorted(
+		# 	docs_to_tfidf.items(), 
+		# 	key=lambda item: item[1], 
+		# 	reverse=True
+		# )
 
 		# Trim the list by the max_results value.
-		sorted_list = sorted_list[:max_results]
+		# sorted_list = sorted_list[:max_results]
 
 		# Return the list.
-		return sorted_list
+		# return sorted_list
 	
 
-	def compute_tfidf(self, words: List[str]):
-		tf_idf = dict()
+	def compute_tfidf(self, words: List[str], query_word_freq: Dict):
+		# Sort the set of words (ensures consistent positions of each 
+		# word in vector).
+		words = sorted(words)
 
-		# Iterate through all files to get IDF. Compute only once, not per file.
+		# Iterate through all files to get IDF. Compute only once, not 
+		# per file.
 		word_idf = self.compute_idf(words)
+
+		# Compute query TF-IDF.
+		query_tf = dict()
+		query_tfidf = dict()
+		query_total_word_count = sum([value for value in query_word_freq.values()])
+		for word in words:
+			query_tf[word] = query_word_freq[word] / query_total_word_count
+			query_tfidf[word] = query_tf[word] * word_idf[word]
+
+		# Compute corpus TF-IDF.
+		tf_idf = dict()
 
 		# Compute TF-IDF for every article.
 		for file in self.doc_to_word_files:
@@ -325,6 +296,38 @@ class TF_IDF(BagOfWords):
 					for word in words
 				}
 
+		print("query TF-IDF:")
+		print(json.dumps(query_tfidf, indent=4))
+		print("top 5 document TF-IDF:")
+		print(
+			json.dumps(
+				{
+					doc: value for doc, value in tf_idf.items()
+					if doc in list(tf_idf.keys())[:5]
+				}, 
+				indent=4
+			)
+		)
+
+
+class BM25(BagOfWords):
+	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
+
+		pass
+
+
+	def search(self, query, max_results=50):
+		'''
+		Conducts a search on the wikipedia data with BM25.
+		@param: query str, the raw text that is being queried from the
+			wikipedia data.
+		@param: max_results (int), the maximum number of search results
+			to return.
+		@return: returns a list of objects where each object contains
+			an article's path, title, retrieved text, and the slices of
+			that text that is being returned (for BM25 and TF-IDF, 
+			those slices values are for the whole article).
+		'''
 		pass
 
 
