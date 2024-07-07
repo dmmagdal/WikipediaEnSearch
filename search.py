@@ -319,7 +319,7 @@ class TF_IDF(BagOfWords):
 		pass
 
 
-	def search(self, query:str, max_results:int = 50):
+	def search(self, query: str, max_results: int = 50):
 		'''
 		Conducts a search on the wikipedia data with TF-IDF.
 		@param: query str, the raw text that is being queried from the
@@ -352,6 +352,19 @@ class TF_IDF(BagOfWords):
 	
 
 	def compute_tfidf(self, words: List[str], query_word_freq: Dict, max_results: int = -1.0):
+		'''
+		Iterate through all the documents in the corpus and compute the
+			TF-IDF for each document in the corpus. Sort the results
+			based on the cosine similarity score and return the sorted
+			list.
+		@param: words (List[str]), the (ordered) list of all (unique) 
+			terms to compute the Inverse Document Frequency for.
+		@param: query_word_free (Dict),
+		@param: max_results (int), the maximum number of results to 
+			return. Default is -1.0 (no limit).
+		@return: returns the TF-IDF for the query as well as the sorted
+			list of search results. 
+		'''
 		# Sort the set of words (ensures consistent positions of each 
 		# word in vector).
 		words = sorted(words)
@@ -369,8 +382,14 @@ class TF_IDF(BagOfWords):
 			query_tfidf[word_idx] = query_word_tf * word_idf[word_idx]
 
 		# Compute corpus TF-IDF.
-		corpus_tfidf = list()
+		# corpus_tfidf = list()
 		corpus_tfidf_heap = []
+
+		# NOTE:
+		# Heapq in use is a max-heap. This is implemented by 
+		# multiplying the cosine similarity score by -1. That way, the
+		# largest values are actually the smallest in the heap and are
+		# popped when we need to pushpop the largest scoring tuple.
 
 		# Compute TF-IDF for every file.
 		for file in self.doc_to_word_files:
@@ -397,6 +416,10 @@ class TF_IDF(BagOfWords):
 					query_tfidf, doc_tfidf
 				)
 
+				# Multiply score by -1 to get inverse score. This is
+				# important since we are relying on a max heap.
+				doc_cos_score *= -1
+
 				# If the similarity relevence threshold has been 
 				# initialized, verify the document cosine similarity
 				# score is within that threshold. Do not append
@@ -415,6 +438,8 @@ class TF_IDF(BagOfWords):
 				# NOTE:
 				# Using heapq vs list keeps sorting costs down: 
 				# list sort is n log n
+				# list append is 1 or n (depending on if the list needs
+				# to be resized)
 				# heapify is n log n but since heap is initialized
 				# from empty list, that cost is negligible
 				# heapq pushpop is log n
@@ -448,7 +473,12 @@ class TF_IDF(BagOfWords):
 		print("query TF-IDF:")
 		print(json.dumps(query_tfidf, indent=4))
 		print("top 5 document TF-IDF:")
-		print(json.dumps(corpus_tfidf[:5], indent=4))
+		# print(json.dumps(corpus_tfidf[:5], indent=4))
+		print(
+			json.dumps(
+				[tuple_ for tuple_ in corpus_tfidf_heap], indent=4
+			)
+		)
 
 		# Return the query TF-IDF and the corpus TF-IDF.
 		# return query_tfidf, corpus_tfidf
