@@ -4,46 +4,125 @@
 # Python 3.9
 # Windows/MacOS/Linux
 
-import os
+
+import heapq
 import json
 import math
-from typing import List, Dict
+import os
+from typing import List, Dict, Tuple
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag, NavigableString
 import faiss
 import lancedb
 import msgpack
 import numpy as np
 
-from preprocess import load_model
+from preprocess import load_model, process_page
 from preprocess import bow_preprocessing, vector_preprocessing
 
 
-def load_article_file(path: str):
-	pass
+def load_article_xml_file(path: str) -> str:
+	'''
+	Load an xml file from the given path.
+	@param: path (str), the path of the xml file that is to be loaded.
+	@return: Returns the xml file contents.
+	'''
+	with open(path, "r") as f:
+		return f.read()
 
 
-def load_data_from_msgpack(path: str):
+def load_article_text(path: str, sha1_list: List[str]) -> List[str]:
+	'''
+	Load the specified articles from an xml file given the path.
+	@param: path (str), the path of the xml file that is to be loaded.
+	@param: sha1_list (List[str]), a list the SHA1 hashes of the target 
+		articles.
+	@return: Returns a list containing the article text of each file.
+	'''
+	# Load the (xml) file.
+	file = load_article_xml_file(path)
+
+	# Parse the file with beautifulsoup.
+	soup = BeautifulSoup(file, "lxml")
+
+	# Initiaize the return list of articles.
+	articles = []
+
+	# Iterate through the different SHA1 values from the SHA1 hash
+	# list.
+	for sha1_hash in sha1_list:
+		# Isolate the target article with the given SHA1 hash. Append
+		# the processed text if it was found, otherwise append the
+		# error message string.
+		page = soup.find("page", attrs={"sha1": sha1_hash})
+		# page = soup.find("page", sha1=sha1_hash)
+		if page is not None:
+			articles.append(process_page(page))
+		else:
+			articles.append(f"ERROR: COULD NOT LOCATE ARTICLE {sha1_hash} in {path}")
+
+	# Return the list of article texts.
+	return articles
+
+
+def load_data_from_msgpack(path: str) -> Dict:
+	'''
+	Load a data file (to dictionary) from msgpack file given the path.
+	@param: path (str), the path of the data file that is to be loaded.
+	@return: Returns a python dictionary containing the structured data
+		from the loaded data file.
+	'''
 	with open(path, 'rb') as f:
 		byte_data = f.read()
 
 	return msgpack.unpackb(byte_data)
 
 
-def load_data_from_json(path: str):
+def load_data_from_json(path: str) -> Dict:
+	'''
+	Load a data file (to dictionary) from either a file given the path.
+	@param: path (str), the path of the data file that is to be loaded.
+	@return: Returns a python dictionary containing the structured data
+		from the loaded data file.
+	'''
 	with open(path, "r") as f:
 		return json.load(f)
 	
 
-def load_data_file(path: str, use_json: bool = False):
+def load_data_file(path: str, use_json: bool = False) -> Dict:
+	'''
+	Load a data file (to dictionary) from either a JSON or msgpack file
+		given the path.
+	@param: path (str), the path of the data file that is to be loaded.
+	@param: use_json (bool), whether to load the data file using JSON 
+		msgpack (default is False).
+	@return: Returns a python dictionary containing the structured data
+		from the loaded data file.
+	'''
 	if use_json:
 		return load_data_from_json(path)
 	return load_data_from_msgpack(path)
 
 
 def cosine_similarity(vec1: List[float], vec2: List[float]):
+	'''
+	Compute the cosine similarity of two vectors.
+	@param: vec1 (List[float]), a vector of float values. This can be
+		vectors such as a sparse vector from TF-IDF or BM25 to a dense
+		vector like an embedding vector.
+	@param: vec2 (List[float]), a vector of float values. This can be
+		vectors such as a sparse vector from TF-IDF or BM25 to a dense
+		vector like an embedding vector.
+	@return: Returns the cosine similarity between the two input 
+		vectors. Value range is 0 (similar) to 1 (disimilar).
+	'''
+	# Convert the vectors to numpy arrays.
 	np_vec1 = np.array(vec1)
 	np_vec2 = np.array(vec2)
+
+	# Compute the cosine similarity of the two vectors and return the
+	# value.
 	cosine = np.dot(np_vec1, np_vec2) /\
 		(np.linalg.norm(np_vec1) * np.linalg.norm(np_vec2))
 	return cosine
@@ -51,6 +130,15 @@ def cosine_similarity(vec1: List[float], vec2: List[float]):
 
 class BagOfWords: 
 	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
+		'''
+		Initialize a Bag-of-Words search object.
+		@param: bow_dir (str), a path to the directory containing the 
+			bag of words metadata. This metadata includes the folders
+			mapping to the word-to-document and document-to-word files.
+		@param: srt (float), the similarity relative threshold. A value
+			used to remove documents from the search results if they
+			score a cosine similarity above the threshold.
+		'''
 		# Initialize class variables either from arguments or with
 		# default values.
 		self.bow_dir = bow_dir
@@ -59,9 +147,9 @@ class BagOfWords:
 		self.word_to_doc_files = None
 		self.doc_to_word_files = None
 		self.corpus_size = 0	# total number of documents (articles)
+		self.srt = srt			# similarity relative threshold value
 		self.use_json = use_json
 		self.extension = ".json" if use_json else ".msgpack"
-		self.valid_aggr = ["sum", "mean"]
 
 		# Initialize mapping folder path and files list.
 		self.locate_and_validate_documents(bow_dir)
@@ -81,9 +169,24 @@ class BagOfWords:
 		# Verify that the corpus size is not 0.
 		assert self.corpus_size != 0,\
 			"Could not count the number of documents (articles) in the corpus. Corpus size is 0."
+		
+		# Verify that the srt is either -1.0 or in the range [0.0, 1.0]
+		# (cosine similarity range).
+		srt_off = self.srt == -1.0
+		srt_valid = self.srt >= 0.0 and self.srt <= 1.0
+		assert srt_off or srt_valid,\
+			"SRT value was initialize to an invalid number. Either -1.0 for 'off' or a float in the range [0.0, 1.0] is expected"
 
 
-	def locate_and_validate_documents(self, bow_dir):
+	def locate_and_validate_documents(self, bow_dir: str):
+		'''
+		Verify that the bag-of-words directory exists along with the
+			metadata files expected to be within them.
+		@param: bow_dir (str), a path to the directory containing the 
+			bag of words metadata. This metadata includes the folders
+			mapping to the word-to-document and document-to-word files.
+		@return: returns nothing.
+		'''
 		# Initialize path to word to document and document to word 
 		# folders.
 		self.word_to_doc_folder = os.path.join(bow_dir, 'word_to_docs')
@@ -115,56 +218,77 @@ class BagOfWords:
 			f"Detected document to words folder {self.doc_to_word_folder} to have not supported files"
 		
 
-	def get_number_of_documents(self):
+	def get_number_of_documents(self) -> int:
+		'''
+		Count the number of documents recorded in the corpus.
+		@param, takes no arguments.
+		@return, Returns the number of documents in the corpus.
+		'''
+
+		# Initialize the counter to 0.
 		counter = 0
+
+		# Iterate through each file in the documents to words map 
+		# files.
 		for file in self.doc_to_word_files:
+			# Load the data from the file and increment the counter by
+			# the number of documents in each file.
 			doc_to_words = load_data_from_msgpack(file)
 			counter += len(list(doc_to_words.keys()))
 		
+		# Return the count.
 		return counter
 	
 
-	def compute_tf(self, doc_to_words: Dict, words: List[str]):
-		# total_word_count, word_freq
-		# doc, word
-		doc_tf = dict()
-		word_freq_map = dict()
-		word_vec = []
+	def compute_tf(self, doc_word_freq: Dict, words: List[str]) -> List[float]:
+		'''
+		Compute the Term Frequency of a set of words given a document's
+			word frequency mapping.
+		@param: doc_word_freq (Dict), the mapping of a given word the
+			frequency it appears in a given document.
+		@param: words (List[str]), the (ordered) list of all (unique) 
+			terms to compute the Inverse Document Frequency for.
+		@return: returns the Term Frequency of each of the words for
+			the given document in a vector (List[float]). The vector is
+			ordered such that the index of each value corresponds to 
+			the index of a word in the word list argument.
+		'''
+		# Initialize the document's term frequency vector.
+		doc_word_tf = [0.9] * len(words)
 
-		# Iterate through each document.
-		for doc in doc_to_words:
-			# Initialize the document's word vector.
-			word_vec = []
+		# Compute total word count.
+		total_word_count = sum(
+			[value for value in doc_word_freq.values()]
+		)
 
-			# Extract the document owrd frequencies.
-			word_freq_map = doc_to_words[doc]
-
-			# Compute total word count.
-			total_word_count = sum(
-				[value for value in word_freq_map.values()]
-			)
-
-			# Compute the term frequency accordingly and add it to the 
-			# document's word vector
-			for word in words:
-				if word in word_freq_map:
-					word_freq = word_freq_map[word]
-					word_vec.append(word_freq / total_word_count)
-				else:
-					word_vec.append(0)
-
-			doc_tf[doc] = word_vec
+		# Compute the term frequency accordingly and add it to the 
+		# document's word vector
+		for word_idx in range(len(words)):
+			word = words[word_idx]
+			if word in doc_word_freq:
+				word_freq = doc_word_freq[word]
+				doc_word_tf[word_idx] =  word_freq / total_word_count
 			
-		# Return the dictionary of the document term frequency word
-		# vectors.
-		return doc_tf
+		# Return the document's term frequency for input words as a 
+		# vector (List[float]).
+		return doc_word_tf
 	
 
-	def compute_idf(self, words: List[str]):
-		# Initialize a dictionary containing the mappings of query 
-		# words to the total count of how many articles each appears 
-		# in.
-		word_count = {word: 0 for word in words}
+	def compute_idf(self, words: List[str]) -> List[float]:
+		'''
+		Compute the Inverse Document Frquency of the given set of 
+			(usually query) words.
+		@param: words (List[str]), the (ordered) list of all (unique) 
+			terms to compute the Inverse Document Frequency for.
+		@param: returns the Inverse Document Frequency for all words
+			queried in the corpus. The data is returned in an ordered
+			list (List[float]) where the index of each value
+			corresponds to the index of a word in the word list 
+			argument.
+		'''
+		# Initialize a list containing the mappings of the query words
+		# to the total count of how many articles each appears in.
+		word_count = [0.0] * len(words)
 
 		# Iterate through each file.
 		for file in self.word_to_doc_files:
@@ -173,25 +297,23 @@ class BagOfWords:
 
 			# Iterate through each word. Update the total count for
 			# each respective word if applicable.
-			for word in words:
-				if word in word_to_docs:
-					word_count[word] += word_to_docs[word]
+			for word_idx in range(len(words)):
+				word = words[word_idx]
+				if words[word] in word_to_docs:
+					word_count[word_idx] += word_to_docs[word]
 
 		# Compute inverse document frequency for each term.
-		# return [
-		# 	math.log(self.corpus_size / word_count[word])
-		# 	for word in words
-		# ]
-		return {
-			word: math.log(self.corpus_size / word_count[word])
-			for word in words
-		}
+		return [
+			math.log(self.corpus_size / word_count[word_idx])
+			if word_count[word_idx] != 0.0 else 0.0
+			for word_idx in range(len(words))
+		]
 
 
 class TF_IDF(BagOfWords):
-	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
-
-
+	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False, **kwargs) -> None:
+		super().__init__(**kwargs)
+		self.bow_dir = bow_dir
 		self.srt = srt
 		self.use_json = use_json
 		pass
@@ -216,98 +338,121 @@ class TF_IDF(BagOfWords):
 		# Preprocess the search query to a bag of words.
 		words, word_freq = bow_preprocessing(query, True)
 
-		query_tfidf, corpus_tfidf = self.compute_tfidf(
-			words, word_freq
-		)
+		# Compute the TF-IDF for the corpus.
+		_, corpus_tfidf = self.compute_tfidf(words, word_freq)
 
-		# Convert the dictionary to a sorted list (sorted from largest
-		# to smallest TF-IDF vector sum).
-		# sorted_list = sorted(
-		# 	docs_to_tfidf.items(), 
-		# 	key=lambda item: item[1], 
-		# 	reverse=True
-		# )
+		# Sort the corpus TF-IDF list by cosine similarity score.
+		sorted_rankings = sorted(corpus_tfidf, lambda x: x[-1])
 
 		# Trim the list by the max_results value.
-		# sorted_list = sorted_list[:max_results]
+		sorted_rankings = sorted_rankings[:max_results]
 
 		# Return the list.
-		# return sorted_list
+		return sorted_rankings
 	
 
-	def compute_tfidf(self, words: List[str], query_word_freq: Dict):
+	def compute_tfidf(self, words: List[str], query_word_freq: Dict, max_results: int = -1.0):
 		# Sort the set of words (ensures consistent positions of each 
 		# word in vector).
 		words = sorted(words)
 
-		# Iterate through all files to get IDF. Compute only once, not 
-		# per file.
+		# Iterate through all files to get IDF of each query word. 
+		# Compute only once per search.
 		word_idf = self.compute_idf(words)
 
 		# Compute query TF-IDF.
-		query_tf = dict()
-		query_tfidf = dict()
 		query_total_word_count = sum([value for value in query_word_freq.values()])
-		for word in words:
-			query_tf[word] = query_word_freq[word] / query_total_word_count
-			query_tfidf[word] = query_tf[word] * word_idf[word]
+		query_tfidf = [0.0] * len(words)
+		for word_idx in range(len(words)):
+			word = words[word_idx]
+			query_word_tf = query_word_freq[word] / query_total_word_count
+			query_tfidf[word_idx] = query_word_tf * word_idf[word_idx]
 
 		# Compute corpus TF-IDF.
-		tf_idf = dict()
+		corpus_tfidf = list()
+		corpus_tfidf_heap = []
 
-		# Compute TF-IDF for every article.
+		# Compute TF-IDF for every file.
 		for file in self.doc_to_word_files:
 			# Load the doc to word frequency mappings from file.
 			doc_to_words = load_data_file(file, self.use_json)
 
-			# Compute article TF.
-			# doc_tf = self.compute_tf(doc_to_words, words)
-
-			# Compute TF-IDF.
-
 			# Iterate through each document.
 			for doc in doc_to_words:
-				# Initialize the document's word vector.
-				# word_vec = []
-				word_vec = dict()
-
 				# Extract the document owrd frequencies.
 				word_freq_map = doc_to_words[doc]
 
-				# Compute total word count.
-				total_word_count = sum(
-					[value for value in word_freq_map.values()]
+				# Compute the document's term frequency for each word.
+				doc_word_tf = self.compute_tf(word_freq_map, words)
+
+				# Compute document TF-IDF.
+				doc_tfidf = [
+					tf * idf 
+					for tf, idf in list(zip(doc_word_tf, word_idf))
+				]
+
+				# Compute cosine similarity against query TF-IDF and
+				# the document TF-IDF.
+				doc_cos_score = cosine_similarity(
+					query_tfidf, doc_tfidf
 				)
 
-				# Compute the term frequency accordingly and add it to the 
-				# document's word vector
-				for word in words:
-					if word in word_freq_map:
-						word_freq = word_freq_map[word]
-						# word_vec.append(word_freq / total_word_count)
-						word_vec[word] = word_freq / total_word_count
-					else:
-						# word_vec.append(0)
-						word_vec[word] = 0
+				# If the similarity relevence threshold has been 
+				# initialized, verify the document cosine similarity
+				# score is within that threshold. Do not append
+				# documents to the results list if they fall under the
+				# threshold.
+				if self.srt > 0.0 and doc_cos_score > self.srt:
+					continue
 
-				# doc_tf[doc] = word_vec
-				tf_idf[doc] = {
-					word: word_vec[word] * word_idf[word] 
-					for word in words
-				}
+				# Append the document name (includes file path & 
+				# article SHA1), TF-IDF vector, and cosine similarity 
+				# score (against the query TF-IDF vector).
+				# corpus_tfidf.append(
+				# 	tuple([doc, doc_tfidf, doc_cos_score])
+				# )
+
+				# NOTE:
+				# Using heapq vs list keeps sorting costs down: 
+				# list sort is n log n
+				# heapify is n log n but since heap is initialized
+				# from empty list, that cost is negligible
+				# heapq pushpop is log n
+				# heapq push is log n
+				# heapq pop is log n
+				# If shortening the list is a requirement, then I 
+				# dont have to worry about sorting the list before
+				# slicing it with heapq. The heapq will maintain
+				# order with each operation at a cost efficent speed.
+				
+				# Insert the document name (includes file path & 
+				# article SHA1), TF-IDF vector, and cosine similarity 
+				# score (against the query TF-IDF vector) to the heapq.
+				# The heapq sorts by the first value in the tuple so 
+				# that is why the cosine similarity score is the first
+				# item in the tuple.
+				if max_results != -1.0 and len(corpus_tfidf_heap) > max_results:
+					# Pushpop the highest (cosine similarity) value
+					# tuple from the heap to make way for the next
+					# tuple.
+					heapq.heappushpop(
+						corpus_tfidf_heap,
+						tuple([doc_cos_score, doc, doc_tfidf])
+					)
+				else:
+					heapq.heappush(
+						corpus_tfidf_heap,
+						tuple([doc_cos_score, doc, doc_tfidf])
+					)
 
 		print("query TF-IDF:")
 		print(json.dumps(query_tfidf, indent=4))
 		print("top 5 document TF-IDF:")
-		print(
-			json.dumps(
-				{
-					doc: value for doc, value in tf_idf.items()
-					if doc in list(tf_idf.keys())[:5]
-				}, 
-				indent=4
-			)
-		)
+		print(json.dumps(corpus_tfidf[:5], indent=4))
+
+		# Return the query TF-IDF and the corpus TF-IDF.
+		# return query_tfidf, corpus_tfidf
+		return query_tfidf, corpus_tfidf_heap
 
 
 class BM25(BagOfWords):

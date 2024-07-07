@@ -5,16 +5,31 @@
 # Windows/MacOS/Linux
 
 
+import json
+from typing import List, Dict
+
 import cython
+# from cython cimport array
 # from cython import dict, list, str, int
 # from cython import list, str, int
 # from cython import str, int
 from cython import int
 from libc.math import log
-from typing import List, Dict
+# from libc.stdlib import malloc, free
+import msgpack
 
 
-def compute_tf(doc_to_words: Dict, words: List[str], aggr: str = None):
+# NOTE: 
+# For functions associated with computing TF-IDF, it is assume that
+# the words list argument is sorted/fixed so as to maintain consistent
+# ordering for the output vector. For instance, if the words list is
+# ['happy', 'go', 'lucky'], then the resulting vectors map to the same
+# index of the respective words (ie 'happy' always maps to the 0 index
+# in the vectors, 'go' always maps to the 1 index in the vectors, and
+# so on).
+
+
+def compute_tf(doc_to_words: Dict, words: List[str]):
     cdef int total_word_count, word_freq
     # cdef dict doc_tf = {}
     # cdef dict word_freq_map
@@ -24,7 +39,6 @@ def compute_tf(doc_to_words: Dict, words: List[str], aggr: str = None):
     doc_tf = dict()
     word_freq_map = dict()
     word_vec = []
-    valid_aggr = ["sum", "mean"]
 
     # Iterate through each document.
     for doc in doc_to_words:
@@ -47,15 +61,6 @@ def compute_tf(doc_to_words: Dict, words: List[str], aggr: str = None):
                 word_vec.append(word_freq / total_word_count)
             else:
                 word_vec.append(0)
-
-        # Set the text frequency word vector to the current document
-        # (compute aggregation as necessary).
-        if aggr is None or aggr not in valid_aggr:
-            doc_tf[doc] = word_vec
-        elif aggr == "add":
-            doc_tf[doc] = sum(word_vec)
-        elif aggr == "mean":
-            doc_tf[doc] = sum(word_vec) / len(word_vec)
         
     # Return the dictionary of the document term frequency word
     # vectors.
@@ -63,4 +68,35 @@ def compute_tf(doc_to_words: Dict, words: List[str], aggr: str = None):
 
 
 def compute_idf():
+    pass
+
+
+def compute_tfidf(doc_to_words: Dict, words: List[str], srt: float = -1.0):
+    # cdef int size = len(words)
+    # cdef cython.float *array = <float *>malloc(size * sizeof(cython.float))
+
+    # Compute IDF.
+    idf = compute_idf()
+
+    # Iterate through each document.
+    for doc in doc_to_words.keys():
+        word_freq = doc_to_words[doc]
+
+        # Compute total document length.
+        doc_len = sum([value for value in word_freq.values()])
+
+        word_vec = [0] * len(words)
+
+        for word_idx in range(len(words)):
+            word = words[word_idx]
+
+            # Compute term frequency.
+            word_tf = word_freq[word] / doc_len
+
+            # Compute TF-IDF for word.
+            word_tfidf = word_tf * idf
+        
+        # Compute document cosine similarity given current TF-IDF
+        # vector.
+
     pass

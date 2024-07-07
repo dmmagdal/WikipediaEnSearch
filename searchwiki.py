@@ -23,12 +23,15 @@ def test() -> None:
 	###################################################################
 	# INITIALIZE SEARCH ENGINES
 	###################################################################
-	rerank = ReRankSearch()
-	bm25 = BM25()
 	tf_idf = TF_IDF()
+	bm25 = BM25()
+	rerank = ReRankSearch()
 	# vector_search = VectorSearch()
 	search_engines = [
-		("tf-idf", tf_idf), ("bm25", bm25), ("rerank", rerank)
+		("tf-idf", tf_idf), 
+		("bm25", bm25), 
+		# ("vector", vector_search),
+		("rerank", rerank)
 	]
 
 	###################################################################

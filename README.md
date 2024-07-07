@@ -364,3 +364,8 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Storage [docoumentation](https://lancedb.github.io/lancedb/concepts/storage/)
          - Primarily for local disk storage
      - FAQs [documentation](https://lancedb.github.io/lancedb/faq/)
+ - Cosine Similarity
+     - Wikipedia [article](https://en.wikipedia.org/wiki/Cosine_similarity)
+ - TF-IDF
+     - Document Similarity Search Examples in Python (LinkedIn [blog post](https://www.linkedin.com/pulse/document-similarity-examples-python-rany-elhousieny-phd%E1%B4%AC%E1%B4%AE%E1%B4%B0-0i5lc/))
+     - Understanding TF-IDF [geeksforgeeks](https://www.geeksforgeeks.org/understanding-tf-idf-term-frequency-inverse-document-frequency/)
