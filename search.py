@@ -16,6 +16,7 @@ from bs4.element import Tag, NavigableString
 import faiss
 import lancedb
 import msgpack
+# from nltk.tokenize import word_tokenize
 import numpy as np
 
 from preprocess import load_model, process_page
@@ -128,6 +129,10 @@ def cosine_similarity(vec1: List[float], vec2: List[float]):
 	return cosine
 	
 
+def print_results(results: List, search_type:str = "tf-idf") -> None:
+	pass
+
+
 class BagOfWords: 
 	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
 		'''
@@ -224,7 +229,6 @@ class BagOfWords:
 		@param, takes no arguments.
 		@return, Returns the number of documents in the corpus.
 		'''
-
 		# Initialize the counter to 0.
 		counter = 0
 
@@ -233,7 +237,7 @@ class BagOfWords:
 		for file in self.doc_to_word_files:
 			# Load the data from the file and increment the counter by
 			# the number of documents in each file.
-			doc_to_words = load_data_from_msgpack(file)
+			doc_to_words = load_data_file(file, self.use_json)
 			counter += len(list(doc_to_words.keys()))
 		
 		# Return the count.
@@ -254,7 +258,7 @@ class BagOfWords:
 			the index of a word in the word list argument.
 		'''
 		# Initialize the document's term frequency vector.
-		doc_word_tf = [0.9] * len(words)
+		doc_word_tf = [0.0] * len(words)
 
 		# Compute total word count.
 		total_word_count = sum(
@@ -311,11 +315,11 @@ class BagOfWords:
 
 
 class TF_IDF(BagOfWords):
-	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False, **kwargs) -> None:
-		super().__init__(**kwargs)
-		self.bow_dir = bow_dir
-		self.srt = srt
-		self.use_json = use_json
+	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
+		super().__init__(bow_dir=bow_dir, srt=srt, use_json=use_json)
+		# self.bow_dir = bow_dir
+		# self.srt = srt
+		# self.use_json = use_json
 		pass
 
 
@@ -331,7 +335,6 @@ class TF_IDF(BagOfWords):
 			that text that is being returned (for BM25 and TF-IDF, 
 			those slices values are for the whole article).
 		'''
-
 		# Assertion for max_results argument (must be non-zero int).
 		assert isinstance(max_results, int) and str(max_results).isdigit() and max_results > 0, f"max_results argument is expected to be some int value greater than zero. Recieved {max_results}"
 
@@ -339,13 +342,34 @@ class TF_IDF(BagOfWords):
 		words, word_freq = bow_preprocessing(query, True)
 
 		# Compute the TF-IDF for the corpus.
-		_, corpus_tfidf = self.compute_tfidf(words, word_freq)
+		_, corpus_tfidf = self.compute_tfidf(
+			words, word_freq, max_results=max_results
+		)
 
-		# Sort the corpus TF-IDF list by cosine similarity score.
-		sorted_rankings = sorted(corpus_tfidf, lambda x: x[-1])
+		# The corpus TF-IDF results are stored in a max heap. Convert
+		# the structure back to a list sorted from smallest to largest
+		# cosine similarity score.
+		sorted_rankings = []
+		for _ in range(len(corpus_tfidf)):
+			# Pop the top item from the max heap.
+			result = heapq.heappop(corpus_tfidf)
 
-		# Trim the list by the max_results value.
-		sorted_rankings = sorted_rankings[:max_results]
+			# Reverse the cosine similarity score back to its original
+			# value.
+			result[0] *= -1
+
+			# Extract the document path and SHA1 and use them to load 
+			# the article text.
+			document_sha1 = result[1]
+			document, sha1 = os.path.basename(document_sha1).split(".xml")
+			document += ".xml"
+			text = load_article_text(document, [sha1])
+			
+			# Append the results,
+			full_result = result + tuple([text, [0, len(text)]])
+
+			# Insert the item into the list from the front.
+			sorted_rankings.insert(0, full_result)
 
 		# Return the list.
 		return sorted_rankings
@@ -359,7 +383,8 @@ class TF_IDF(BagOfWords):
 			list.
 		@param: words (List[str]), the (ordered) list of all (unique) 
 			terms to compute the Inverse Document Frequency for.
-		@param: query_word_free (Dict),
+		@param: query_word_freq (Dict), the word frequency mapping for 
+			the input search query.
 		@param: max_results (int), the maximum number of results to 
 			return. Default is -1.0 (no limit).
 		@return: returns the TF-IDF for the query as well as the sorted
@@ -374,7 +399,9 @@ class TF_IDF(BagOfWords):
 		word_idf = self.compute_idf(words)
 
 		# Compute query TF-IDF.
-		query_total_word_count = sum([value for value in query_word_freq.values()])
+		query_total_word_count = sum(
+			[value for value in query_word_freq.values()]
+		)
 		query_tfidf = [0.0] * len(words)
 		for word_idx in range(len(words)):
 			word = words[word_idx]
@@ -382,7 +409,6 @@ class TF_IDF(BagOfWords):
 			query_tfidf[word_idx] = query_word_tf * word_idf[word_idx]
 
 		# Compute corpus TF-IDF.
-		# corpus_tfidf = list()
 		corpus_tfidf_heap = []
 
 		# NOTE:
@@ -416,10 +442,6 @@ class TF_IDF(BagOfWords):
 					query_tfidf, doc_tfidf
 				)
 
-				# Multiply score by -1 to get inverse score. This is
-				# important since we are relying on a max heap.
-				doc_cos_score *= -1
-
 				# If the similarity relevence threshold has been 
 				# initialized, verify the document cosine similarity
 				# score is within that threshold. Do not append
@@ -428,12 +450,9 @@ class TF_IDF(BagOfWords):
 				if self.srt > 0.0 and doc_cos_score > self.srt:
 					continue
 
-				# Append the document name (includes file path & 
-				# article SHA1), TF-IDF vector, and cosine similarity 
-				# score (against the query TF-IDF vector).
-				# corpus_tfidf.append(
-				# 	tuple([doc, doc_tfidf, doc_cos_score])
-				# )
+				# Multiply score by -1 to get inverse score. This is
+				# important since we are relying on a max heap.
+				doc_cos_score *= -1
 
 				# NOTE:
 				# Using heapq vs list keeps sorting costs down: 
@@ -456,7 +475,7 @@ class TF_IDF(BagOfWords):
 				# The heapq sorts by the first value in the tuple so 
 				# that is why the cosine similarity score is the first
 				# item in the tuple.
-				if max_results != -1.0 and len(corpus_tfidf_heap) > max_results:
+				if max_results != -1.0 and len(corpus_tfidf_heap) >= max_results:
 					# Pushpop the highest (cosine similarity) value
 					# tuple from the heap to make way for the next
 					# tuple.
@@ -470,28 +489,42 @@ class TF_IDF(BagOfWords):
 						tuple([doc_cos_score, doc, doc_tfidf])
 					)
 
-		print("query TF-IDF:")
-		print(json.dumps(query_tfidf, indent=4))
-		print("top 5 document TF-IDF:")
-		# print(json.dumps(corpus_tfidf[:5], indent=4))
-		print(
-			json.dumps(
-				[tuple_ for tuple_ in corpus_tfidf_heap], indent=4
-			)
-		)
-
 		# Return the query TF-IDF and the corpus TF-IDF.
-		# return query_tfidf, corpus_tfidf
 		return query_tfidf, corpus_tfidf_heap
 
 
 class BM25(BagOfWords):
-	def __init__(self, bow_dir: str, srt: float=-1.0) -> None:
-
+	def __init__(self, bow_dir: str, k1: float = 1.5, b: float = 0.75, 
+			  	srt: float=-1.0, use_json=False) -> None:
+		super().__init__(bow_dir=bow_dir, srt=srt, use_json=use_json)
+		self.avg_corpus_len = self.compute_avg_corpus_size()
+		self.k1 = k1
+		self.b = b
 		pass
 
 
-	def search(self, query, max_results=50):
+	def compute_avg_corpus_size(self) -> float:
+		# Initialize document size sum.
+		doc_size_sum = 0
+
+		# Iterate through each file in the documents to words map 
+		# files.
+		for file in self.doc_to_word_files:
+			# Load the data from the file.
+			doc_to_words = load_data_file(file, self.use_json)
+
+			# For each document in the data, compute the length of the
+			# document by adding up all the word frequency values.
+			for doc in list(doc_to_words.keys()):
+				doc_size_sum += sum(
+					[value for value in doc_to_words[doc].values()]
+				)
+
+		# Return the average document size.
+		return doc_size_sum / self.corpus_size
+
+
+	def search(self, query: str, max_results: int = 50):
 		'''
 		Conducts a search on the wikipedia data with BM25.
 		@param: query str, the raw text that is being queried from the
@@ -503,11 +536,132 @@ class BM25(BagOfWords):
 			that text that is being returned (for BM25 and TF-IDF, 
 			those slices values are for the whole article).
 		'''
-		pass
+		# Assertion for max_results argument (must be non-zero int).
+		assert isinstance(max_results, int) and str(max_results).isdigit() and max_results > 0, f"max_results argument is expected to be some int value greater than zero. Recieved {max_results}"
+
+		# Preprocess the search query to a bag of words.
+		words, word_freq = bow_preprocessing(query, True)
+
+		# Compute the BM25 for the corpus.
+		corpus_bm25 = self.compute_bm25(words, word_freq, max_results=max_results)
+
+		# The corpus TF-IDF results are stored in a max heap. Convert
+		# the structure back to a list sorted from largest to smallest 
+		# BM25 score.
+		sorted_rankings = []
+		for _ in range(len(corpus_bm25)):
+			# Pop the bottom item from the max heap.
+			result = heapq.heappop(corpus_bm25)
+
+			# Extract the document path and SHA1 and use them to load 
+			# the article text.
+			document_sha1 = result[1]
+			document, sha1 = os.path.basename(document_sha1).split(".xml")
+			document += ".xml"
+			text = load_article_text(document, [sha1])
+			
+			# Append the results,
+			full_result = result + tuple([text, [0, len(text)]])
+
+			# Insert the item into the list from the end (append).
+			sorted_rankings.append(full_result)
+		
+		# Return the list.
+		return sorted_rankings
+
+
+	def compute_bm25(self, words: List[str], query_word_freq: Dict, max_results: int = -1.0):
+		'''
+		Iterate through all the documents in the corpus and compute the
+			BM25 for each document in the corpus. Sort the results
+			based on the cosine similarity score and return the sorted
+			list.
+		@param: words (List[str]), the (ordered) list of all (unique) 
+			terms to compute the Inverse Document Frequency for.
+		@param: query_word_freq (Dict), the word frequency mapping for 
+			the input search query.
+		@param: max_results (int), the maximum number of results to 
+			return. Default is -1.0 (no limit).
+		@return: returns the BM25 for the query as well as the sorted
+			list of search results. 
+		'''
+		# Sort the set of words (ensures consistent positions of each 
+		# word in vector).
+		words = sorted(words)
+
+		# Iterate through all files to get IDF of each query word. 
+		# Compute only once per search.
+		word_idf = self.compute_idf(words)
+
+		# Compute corpus BM25.
+		corpus_bm25_heap = []
+
+		# NOTE:
+		# Heapq in use is a max-heap. In this case, we don't want to 
+		# multiply the BM25 score by -1 because a larger score means a
+		# document is "more relevant" to the query (so we want to drop
+		# the lower scores if we have a max_results limit). BM25 also 
+		# doesn't require using cosine similarity since it aggregates
+		# the term values into a sum for the document score.
+
+		# Compute BM25 for every file.
+		for file in self.doc_to_word_files:
+			# Load the doc to word frequency mappings from file.
+			doc_to_words = load_data_file(file, self.use_json)
+
+			# Iterate through each document.
+			for doc in doc_to_words:
+				# Initialize the BM25 score for the document.
+				bm25_score = 0.0
+
+				# Extract the document word frequencies.
+				word_freq_map = doc_to_words[doc]
+
+				# Compute the document length.
+				doc_len = sum(
+					[value for value in word_freq_map.values()]
+				)
+
+				# Compute the document's term frequency for each word.
+				doc_word_tf = self.compute_tf(word_freq_map, words)
+
+				# Iterate over the different words and compute the BM25
+				# score for each. Aggregate that score by adding it to 
+				# the total BM25 score value.
+				for word_idx in range(len(words)):
+					tf = doc_word_tf[word_idx]
+					numerator = word_idf[word_idx] * tf * (self.k1 + 1)
+					denominator = tf + self.k1 *\
+						(
+							1 - self.b + self.b *\
+							(doc_len / self.avg_corpus_len)
+						)
+					bm25_score += numerator / denominator
+
+				# Insert the document name (includes file path & 
+				# article SHA1), BM25 score to the heapq. The heapq 
+				# sorts by the first value in the tuple so that is why
+				# the cosine similarity score is the first item in the 
+				# tuple.
+				if max_results != -1.0 and len(corpus_bm25_heap) >= max_results:
+					# Pushpop the smallest (BM25) value tuple from the 
+					# heap to make way for the next tuple.
+					heapq.heappushpop(
+						corpus_bm25_heap,
+						tuple([bm25_score, doc])
+					)
+				else:
+					heapq.heappush(
+						corpus_bm25_heap,
+						tuple([bm25_score, doc])
+					)
+
+		# Return the corpus BM25 rankings.
+		return corpus_bm25_heap
 
 
 class VectorSearch:
-	def __init__(self, model="bert-base-uncased", index_dir="./vector_indices"):
+	def __init__(self, model="bert-base-uncased", index_dir="./vector_indices", in_memory=True):
 		# Dictionary of supported models for generating vector
 		# embeddings. Each model is going to be supplied with its
 		# desired local storage path (for both model and tokenizer) and
@@ -547,7 +701,7 @@ class VectorSearch:
 			self.index_map = json.load(imp_f)
 
 
-	def search(self, query, max_results=50, document_ids=[]):
+	def search(self, query: str, max_results: int = 50, document_ids: List[str] = []):
 		'''
 		Conducts a search on the wikipedia data with vector search.
 		@param: query str, the raw text that is being queried from the
