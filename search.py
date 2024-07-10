@@ -959,15 +959,13 @@ class VectorSearch:
 
 class ReRankSearch:
 	def __init__(self, bow_path: str, index_path: str, model: str, 
-			  	max_results: int = 50, srt: float = -1.0, 
-				use_json: bool = False,	k1: float = 1.0, 
-				b: float = 0.0, device: str = "cpu", 
+			  	srt: float = -1.0, use_json: bool = False, 
+				k1: float = 1.0, b: float = 0.0, device: str = "cpu",
 				use_tf_idf: bool = False):
 		# Set class variables.
 		self.bow_dir = bow_path
 		self.index_dir = index_path
 		self.model = model
-		self.max_results = max_results
 		self.srt = srt
 		self.use_json = use_json
 		self.use_tfidf = use_tf_idf

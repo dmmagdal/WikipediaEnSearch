@@ -10,6 +10,9 @@ import argparse
 import os
 import json
 import time
+
+import torch
+
 from search import ReRankSearch, TF_IDF, BM25, VectorSearch
 from search import print_results
 
@@ -20,18 +23,27 @@ def test() -> None:
 	@param: takes no arguments.
 	@return: returns nothing.
 	'''
+	# Input values to search engines
+	bow_dir = "./metadata/bag_of_words"
+	index_dir = "./temp"
+	model = "bert"
+	device = "cpu"
+	if torch.cuda.is_available():
+		device = "cuda"
+	elif torch.backends.mps.is_available():
+		device = "mps"
 
 	###################################################################
 	# INITIALIZE SEARCH ENGINES
 	###################################################################
 	search_1_init_start = time.perf_counter()
-	tf_idf = TF_IDF()
+	tf_idf = TF_IDF(bow_dir)
 	search_1_init_end = time.perf_counter()
 	search_1_init_elapsed = search_1_init_end - search_1_init_start
 	print(f"Time to initialize TF-IDF search: {search_1_init_elapsed:.6f} seconds")
 
 	search_2_init_start = time.perf_counter()
-	bm25 = BM25()
+	bm25 = BM25(bow_dir)
 	search_2_init_end = time.perf_counter()
 	search_2_init_elapsed = search_2_init_end - search_2_init_start
 	print(f"Time to initialize BM25 search: {search_2_init_elapsed:.6f} seconds")
@@ -43,7 +55,7 @@ def test() -> None:
 	# print(f"Time to initialize Vector search: {search_3_init_elapsed:.6f} seconds")
 
 	search_4_init_start = time.perf_counter()
-	rerank = ReRankSearch()
+	rerank = ReRankSearch(bow_dir, index_dir, model, device=device)
 	search_4_init_end = time.perf_counter()
 	search_4_init_elapsed = search_4_init_end - search_4_init_start
 	print(f"Time to initialize Vector search: {search_4_init_elapsed:.6f} seconds")
@@ -158,8 +170,8 @@ def main() -> None:
 	parser = argparse.ArgumentParser()
 	parser.add_argument(
 		"--test",
-		action="store_false",
-		help="Specify whether to run the search engine tests. Default is true/not specified."
+		action="store_true",
+		help="Specify whether to run the search engine tests. Default is false/not specified."
 	)
 	args = parser.parse_args()
 
