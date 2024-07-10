@@ -61,7 +61,26 @@ def test() -> None:
 	# Given passages that are directly pulled from random articles, 
 	# determine if the passage each search engine retrieves is correct.
 	query_passages = [
-
+		# Title: Spencer Bailey
+		# SHA1: rpgkzbz22eatq2nlei6w8hd9uk3ikdy
+		# File: pages-articles-multistream7_cd9a3d4ba65dba361f438f398c2fe819f0d736e915f415eec20c12935f4afaec.xml
+		"Bailey graduated from [[Pomfret School]] in Pomfret, Connecticut, in 2004. He received a B.A. in English from [[Dickinson College]] in Carlisle, Pennsylvania, in 2008 and an M.S. in journalism from [[Columbia University Graduate School of Journalism]] in 2010.&lt;ref name=\"LinkedIn\"&gt;{{cite web|title=Spencer Bailey LinkedIn|url=http://www.linkedin.com/in/spencercbailey}}&lt;/ref&gt; He wrote his Dickinson College thesis about [[Philip Larkin]] as a jazz poet.&lt;ref name=\"Slow Words\"&gt;{{cite web|title=Spencer Bailey, editor, New York|url=https://www.slow-words.com/spencer-bailey-editor-new-york/}}&lt;/ref&gt;",
+		# Title: Johntá Austin
+		# SHA1: f52xbwrs52gy3fyoij9mg5hj50748a6
+		# File: pages-articles-multistream7_cd9a3d4ba65dba361f438f398c2fe819f0d736e915f415eec20c12935f4afaec.xml
+		"Austin grew up singing in church choirs and wanted to become an actor. He interviewed celebrities including [[Michael Jackson]] and [[Michael Jordan]], among others, and in 1993 he made his television debut on ''[[The Arsenio Hall Show]]''. On the show he said he loved singing and was asked to sing with [[Arsenio Hall]]'s band.&lt;ref&gt;[http://www.6.islandrecords.com/site/artist_bio.php?artist_id=649]{{dead link|date=April 2017|bot=InternetArchiveBot|fix-attempted=yes}}&lt;/ref&gt;",
+		# Title: Han Pil-hwa
+		# SHA1: 7lcqgwzloqtl5zbtr90xb2ny72kdmth
+		# File: pages-articles-multistream17_acefc7d7172af538daa3f2a1a262627d63766a857e73e5be9713fd9993fd5cf1.xml
+		"After her career in sports, Han has held various offices in politics and sports administration. She became the chief secretary of the [[Speed Skating Association]] February 1986. She has also been deputy director general of the Guidance Bureau for Winter Sports of the [[National Sports Committee]], head of the Technical Guidance Office for Winter Sports of the National Sports Committee, vice-chairwoman of the [[Korea Ice Skating Association]], and vice-chairwoman of the [[Athletic Technique Union]].&lt;ref name="Seoul2002"&gt;{{cite book|title=North Korea Handbook|url=https://books.google.com/books?id=JIlh9nNeadMC&amp;pg=PA781|year=2002|publisher=[[Yonhap News Agency]]|location=Seoul|isbn=978-0-7656-3523-5|page=781}}&lt;/ref&gt;",
+		# Title: Exclusive economic zone of Brazil
+		# SHA1: 1d90usflcvyw3xwg00s9zq1tlziyasb
+		# File: pages-articles-multistream24_dfbf8bc9fa53740888a319295288b448c9605d611edb36e62096df21f8bde98c.xml
+		"The area may be expanded to 4.4&amp;nbsp;million square kilometres in view of the Brazilian claim that was submitted to the [[United Nations Convention on the Law of the Sea|United Nations Commission on the Limits of the Continental Shelf (CLCS)]] in 2004.&lt;ref&gt;[https://www.un.org/Depts/los/clcs_new/submissions_files/bra04/bra_exec_sum.pdf UN Continental Shelf and UNCLOS Article 76: Brazilian Submission]&lt;/ref&gt; It is proposed to extend Brazil's continental shelf to 900 thousand square kilometers of marine soil and subsoil, which the country will be able to explore.&lt;ref&gt;[http://www.senado.gov.br/conleg/artigos/direito/DireitosBrasileirosdeZona.pdf Gonçalves, J. B. – Direitos Brasileiros de Zona Econômica Exclusiva...]&lt;/ref&gt; With the extension, the area will become more contiguous, including the areas of Brazilian archipelagos in the [[Atlantic Ocean|South Atlantic]]. The region with the largest Blue Amazon is the Northeast, due to the existence of several islands that are well spaced from each other in a contiguous marine zone (the island of [[Trindade and Martin Vaz|Trindade]] is too far from the coast for the same to occur).",
+		# Title: Propositional calculus
+		# SHA1: d96gvht6osqafiomyghyxzahe80ygdx
+		# File: pages-articles-multistream1_d7b6e7f73b71fa7ec184da2710574f8eab919b22b9dddc4b005fd840000db8ca.xml
+		"Propositional logic is typically studied through a [[formal system]] in which [[well-formed formula|formulas]] of a [[formal language]] are [[interpretation (logic)|interpreted]] to represent [[propositions]]. This formal language is the basis for [[Proof calculus|proof systems]], which allow a conclusion to be derived from premises if, and only if, it is a [[logical consequence]] of them. This section will show how this works by formalizing the {{section link||Example argument}}. The formal language for a propositional calculus will be fully specified in {{section link||Language}}, and an overview of proof systems will be given in {{section link||Proof systems}}.",
 	]
 	print("=" * 72)
 
