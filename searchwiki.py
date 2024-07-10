@@ -161,10 +161,11 @@ def main() -> None:
 		action="store_false",
 		help="Specify whether to run the search engine tests. Default is true/not specified."
 	)
+	args = parser.parse_args()
 
 	# Depending on the arguments, either run the search tests or just
 	# use the general search function.
-	if parser.test:
+	if args.test:
 		test()
 	else:
 		search_loop()
