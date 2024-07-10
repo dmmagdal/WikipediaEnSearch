@@ -21,6 +21,7 @@ import msgpack
 import numpy as np
 import pyarrow as pa
 import torch
+from tqdm import tqdm
 
 from preprocess import load_model, process_page
 from preprocess import bow_preprocessing, vector_preprocessing
@@ -280,7 +281,7 @@ class BagOfWords:
 
 		# Iterate through each file in the documents to words map 
 		# files.
-		for file in self.doc_to_word_files:
+		for file in tqdm(self.doc_to_word_files):
 			# Load the data from the file and increment the counter by
 			# the number of documents in each file.
 			doc_to_words = load_data_file(file, self.use_json)
@@ -968,6 +969,8 @@ class ReRankSearch:
 		self.model = model
 		self.srt = srt
 		self.use_json = use_json
+		self.k1 = k1
+		self.b = b
 		self.use_tfidf = use_tf_idf
 		self.device = device
 
@@ -979,7 +982,7 @@ class ReRankSearch:
 			)
 		else:
 			self.bm25 = BM25(
-				self.bow_dir, self.srt, k1=k1, b=b, 
+				self.bow_dir, srt=self.srt, k1=self.k1, b=self.b, 
 				use_json=self.use_json
 			)
 		self.vector_search = VectorSearch(
