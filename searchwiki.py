@@ -11,6 +11,7 @@ import os
 import json
 import time
 from search import ReRankSearch, TF_IDF, BM25, VectorSearch
+from search import print_results
 
 
 def test() -> None:
@@ -23,10 +24,30 @@ def test() -> None:
 	###################################################################
 	# INITIALIZE SEARCH ENGINES
 	###################################################################
+	search_1_init_start = time.perf_counter()
 	tf_idf = TF_IDF()
+	search_1_init_end = time.perf_counter()
+	search_1_init_elapsed = search_1_init_end - search_1_init_start
+	print(f"Time to initialize TF-IDF search: {search_1_init_elapsed:.6f} seconds")
+
+	search_2_init_start = time.perf_counter()
 	bm25 = BM25()
-	rerank = ReRankSearch()
+	search_2_init_end = time.perf_counter()
+	search_2_init_elapsed = search_2_init_end - search_2_init_start
+	print(f"Time to initialize BM25 search: {search_2_init_elapsed:.6f} seconds")
+	
+	# search_3_init_start = time.perf_counter()
 	# vector_search = VectorSearch()
+	# search_3_init_end = time.perf_counter()
+	# search_3_init_elapsed = search_3_init_end - search_3_init_start
+	# print(f"Time to initialize Vector search: {search_3_init_elapsed:.6f} seconds")
+
+	search_4_init_start = time.perf_counter()
+	rerank = ReRankSearch()
+	search_4_init_end = time.perf_counter()
+	search_4_init_elapsed = search_4_init_end - search_4_init_start
+	print(f"Time to initialize Vector search: {search_4_init_elapsed:.6f} seconds")
+
 	search_engines = [
 		("tf-idf", tf_idf), 
 		("bm25", bm25), 
@@ -39,18 +60,49 @@ def test() -> None:
 	###################################################################
 	# Given passages that are directly pulled from random articles, 
 	# determine if the passage each search engine retrieves is correct.
-	query_passages = []
+	query_passages = [
 
+	]
+	print("=" * 72)
+
+	# Iterate through each search engine.
 	for name, engine in search_engines:
-		pass
+		# Search engine banner text.
+		print(f"Searching with {name}")
+		search_times = []
+
+		# Iterate through each passage and run the search with the 
+		# search engine.
+		for query in query_passages:
+			# Run the search and track the time it takes to run the 
+			# search.
+			query_search_start = time.perf_counter()
+			results = engine.search(query)
+			query_search_end = time.perf_counter()
+			query_search_elapsed = query_search_end - query_search_start
+
+			# Print out the search time and the search results.
+			print(f"Search returned in {query_search_elapsed:.6f} seconds")
+			print()
+			print_results(results, search_type=name)
+
+			# Append the search time to a list.
+			search_times.append(query_search_elapsed)
+
+		# Compute and print the average search time.
+		avg_search_time = sum(search_times) / len(search_times)
+		print(f"Average search time: {avg_search_time:.6f} seconds")
+		print("=" * 72)
 
 	###################################################################
 	# GENERAL QUERY
 	###################################################################
 	# Given passages that have some relative connection to random 
-	# articles,  determine if the passage each search engine retrieves 
+	# articles, determine if the passage each search engine retrieves 
 	# is correct.
-	query_text = []
+	query_text = [
+
+	]
 	
 	for name, engine in search_engines:
 		pass

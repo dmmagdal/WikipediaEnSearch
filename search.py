@@ -5,6 +5,8 @@
 # Windows/MacOS/Linux
 
 
+import copy
+import hashlib
 import heapq
 import json
 import math
@@ -13,14 +15,32 @@ from typing import List, Dict, Tuple
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag, NavigableString
-import faiss
+# import faiss
 import lancedb
 import msgpack
-# from nltk.tokenize import word_tokenize
 import numpy as np
+import pyarrow as pa
+import torch
 
 from preprocess import load_model, process_page
 from preprocess import bow_preprocessing, vector_preprocessing
+
+
+def hashSum(data: str) -> str:
+	'''
+	Compute the SHA256SUM of the xml data. This is used as part of the
+		naming scheme down the road.
+	@param: data (str), the raw string data from the xml data.
+	@return: returns the SHA256SUM hash.
+	'''
+	# Initialize the SHA256 hash object.
+	sha256 = hashlib.sha256()
+
+	# Update the hash object with the (xml) data.
+	sha256.update(data.encode('utf-8'))
+
+	# Return the digested hash object (string).
+	return sha256.hexdigest()
 
 
 def load_article_xml_file(path: str) -> str:
@@ -129,8 +149,34 @@ def cosine_similarity(vec1: List[float], vec2: List[float]):
 	return cosine
 	
 
-def print_results(results: List, search_type:str = "tf-idf") -> None:
-	pass
+def print_results(results: List, search_type: str = "tf-idf") -> None:
+	valid_search_types = ["tf-idf", "bm25", "vector", "rerank"]
+	assert search_type in valid_search_types,\
+		f"Expected 'search_type' to be either {', '.join(valid_search_types)}. Received {search_type}"
+
+	# Format of the input search results:
+	# TF-IDF
+	# [cosine similarity, document (file + SHA1), text, indices]
+	# BM25
+	# [score, document (file + SHA1), text, indices]
+	# Vector
+	# [cosine similarity, document (file + SHA1), text, indices]
+	# ReRank
+	# [cosine similarity, document (file + SHA1), text, indices]
+
+	print(f"SEARCH RESULTS:")
+	print('-' * 72)
+	for result in results:
+		# Deconstruct the results.
+		score, document, text, indices = result
+		doc, sha1 = os.path.basename(document).split(".xml")
+		doc += ".xml"
+
+		# Print the results out.
+		print(f"Score: {score}")
+		print(f"File Path: {doc}")
+		print(f"Article SHA1: {sha1}")
+		print(f"Article Text:\n{text[indices[0]:indices[1]]}")
 
 
 class BagOfWords: 
@@ -140,7 +186,7 @@ class BagOfWords:
 		@param: bow_dir (str), a path to the directory containing the 
 			bag of words metadata. This metadata includes the folders
 			mapping to the word-to-document and document-to-word files.
-		@param: srt (float), the similarity relative threshold. A value
+		@param: srt (float), the sparse retrieval threshold. A value
 			used to remove documents from the search results if they
 			score a cosine similarity above the threshold.
 		'''
@@ -317,9 +363,6 @@ class BagOfWords:
 class TF_IDF(BagOfWords):
 	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
 		super().__init__(bow_dir=bow_dir, srt=srt, use_json=use_json)
-		# self.bow_dir = bow_dir
-		# self.srt = srt
-		# self.use_json = use_json
 		pass
 
 
@@ -342,7 +385,10 @@ class TF_IDF(BagOfWords):
 		words, word_freq = bow_preprocessing(query, True)
 
 		# Compute the TF-IDF for the corpus.
-		_, corpus_tfidf = self.compute_tfidf(
+		# _, corpus_tfidf = self.compute_tfidf(
+		# 	words, word_freq, max_results=max_results
+		# )
+		corpus_tfidf = self.compute_tfidf(
 			words, word_freq, max_results=max_results
 		)
 
@@ -365,7 +411,7 @@ class TF_IDF(BagOfWords):
 			document += ".xml"
 			text = load_article_text(document, [sha1])
 			
-			# Append the results,
+			# Append the results.
 			full_result = result + tuple([text, [0, len(text)]])
 
 			# Insert the item into the list from the front.
@@ -387,8 +433,7 @@ class TF_IDF(BagOfWords):
 			the input search query.
 		@param: max_results (int), the maximum number of results to 
 			return. Default is -1.0 (no limit).
-		@return: returns the TF-IDF for the query as well as the sorted
-			list of search results. 
+		@return: returns the sorted list of search results. 
 		'''
 		# Sort the set of words (ensures consistent positions of each 
 		# word in vector).
@@ -424,7 +469,7 @@ class TF_IDF(BagOfWords):
 
 			# Iterate through each document.
 			for doc in doc_to_words:
-				# Extract the document owrd frequencies.
+				# Extract the document word frequencies.
 				word_freq_map = doc_to_words[doc]
 
 				# Compute the document's term frequency for each word.
@@ -442,7 +487,7 @@ class TF_IDF(BagOfWords):
 					query_tfidf, doc_tfidf
 				)
 
-				# If the similarity relevence threshold has been 
+				# If the sparse retrieval threshold has been 
 				# initialized, verify the document cosine similarity
 				# score is within that threshold. Do not append
 				# documents to the results list if they fall under the
@@ -489,12 +534,12 @@ class TF_IDF(BagOfWords):
 						tuple([doc_cos_score, doc, doc_tfidf])
 					)
 
-		# Return the query TF-IDF and the corpus TF-IDF.
-		return query_tfidf, corpus_tfidf_heap
+		# Return the corpus TF-IDF.
+		return corpus_tfidf_heap
 
 
 class BM25(BagOfWords):
-	def __init__(self, bow_dir: str, k1: float = 1.5, b: float = 0.75, 
+	def __init__(self, bow_dir: str, k1: float = 1.0, b: float = 0.0, 
 			  	srt: float=-1.0, use_json=False) -> None:
 		super().__init__(bow_dir=bow_dir, srt=srt, use_json=use_json)
 		self.avg_corpus_len = self.compute_avg_corpus_size()
@@ -504,6 +549,12 @@ class BM25(BagOfWords):
 
 
 	def compute_avg_corpus_size(self) -> float:
+		'''
+		Compute the average document length (in words) of the corpus.
+		@param: takes no arguments
+		@return: returns the average number of words per document 
+			across the entire corpus.
+		'''
 		# Initialize document size sum.
 		doc_size_sum = 0
 
@@ -540,10 +591,10 @@ class BM25(BagOfWords):
 		assert isinstance(max_results, int) and str(max_results).isdigit() and max_results > 0, f"max_results argument is expected to be some int value greater than zero. Recieved {max_results}"
 
 		# Preprocess the search query to a bag of words.
-		words, word_freq = bow_preprocessing(query, True)
+		words, _ = bow_preprocessing(query, False)
 
 		# Compute the BM25 for the corpus.
-		corpus_bm25 = self.compute_bm25(words, word_freq, max_results=max_results)
+		corpus_bm25 = self.compute_bm25(words, max_results=max_results)
 
 		# The corpus TF-IDF results are stored in a max heap. Convert
 		# the structure back to a list sorted from largest to smallest 
@@ -560,7 +611,7 @@ class BM25(BagOfWords):
 			document += ".xml"
 			text = load_article_text(document, [sha1])
 			
-			# Append the results,
+			# Append the results.
 			full_result = result + tuple([text, [0, len(text)]])
 
 			# Insert the item into the list from the end (append).
@@ -570,7 +621,7 @@ class BM25(BagOfWords):
 		return sorted_rankings
 
 
-	def compute_bm25(self, words: List[str], query_word_freq: Dict, max_results: int = -1.0):
+	def compute_bm25(self, words: List[str], max_results: int = -1.0):
 		'''
 		Iterate through all the documents in the corpus and compute the
 			BM25 for each document in the corpus. Sort the results
@@ -638,6 +689,13 @@ class BM25(BagOfWords):
 						)
 					bm25_score += numerator / denominator
 
+				# NOTE:
+				# We ignore similarity relevance threshold here because
+				# the range of values for BM25 scores are outside of
+				# the range of values we've set for srt [0.0, 1.0].
+				# Makes it a headache to deal with an unbounded range
+				# so we'll make do without this optimization.
+
 				# Insert the document name (includes file path & 
 				# article SHA1), BM25 score to the heapq. The heapq 
 				# sorts by the first value in the tuple so that is why
@@ -661,94 +719,281 @@ class BM25(BagOfWords):
 
 
 class VectorSearch:
-	def __init__(self, model="bert-base-uncased", index_dir="./vector_indices", in_memory=True):
-		# Dictionary of supported models for generating vector
-		# embeddings. Each model is going to be supplied with its
-		# desired local storage path (for both model and tokenizer) and
-		# the maximum context length (in tokens) that it supports.
-		self.supported_models = {
-			"bert-base-uncased": {
-				"path": "./BERT",
-				"context_length": 512,
-			},
-		}
+	def __init__(self, model: str, index_dir: str, device: str = "cpu"):
+		# Detect config.json file.
+		assert os.path.exists("config.json"),\
+			"Expected config.json file to exist. File is required for using vector search engine."
+		
+		# Verify that the model is supported with config.json.
+		with open("config.json", "r") as f:
+			config = json.load(f)
 
-		# Assert that the model passed in is one of the supported ones.
-		supported_model_names = list(self.supported_models.keys())
-		assert model in supported_model_names, f"Embedding model {model} is not in list of supported models {supported_model_names}"
+		self.config = config
+		valid_models = config["models"]
+		valid_model_names = list(valid_models.keys())
+		assert model in valid_model_names,\
+			f"Expected embedding model to be from valid models list {', '.join(valid_model_names)}. Received {model}."
+		
+		# Verify the model passed in matches the set model in the 
+		# config.
+		set_model = config["vector-search_config"]["model"]
+		assert model == set_model,\
+			f"Argument 'model' expected to match 'model' from 'vector-search_config' in config.json. Received {model}."
 
-		# Assert that the index directory exists.
-		assert os.path.exists(index_dir) and os.path.isdir(index_dir), f"Index directory {index_dir} does not exist."
+		# Load model config data.
+		self.model_name = model
+		self.model_config = valid_models[model]
 
-		# Assert that the index directory is populated with (faiss) 
-		# index files.
-		self.index_files = [
-			os.path.join(index_dir, file) 
-			for file in os.listdir(index_dir) 
-			if file.endswith("pkl")
-		]
-		assert len(self.index_files) != 0, f"No index files found in {index_dir}"
+		# Load model and tokenizer.
+		self.device = device
+		self.tokenizer, self.model = load_model(config, device=device)
 
-		# Assert that the index directory contains a .
-		map_file = "document_map.json"
-		self.index_map_path = os.path.join(index_dir, map_file)
-		assert os.path.exists(self.index_map_path) and os.path.isfile(self.index_map_path), f"No document map file ({map_file}) was found in {index_dir}"
+		# Assert that the index directory path string is not empty.
+		assert index_dir != "",\
+			"Argument 'index_dir' expected to be a valid directory path."
+		self.index_dir = index_dir
 
-		# Load the model. 
-  
-		# Load the index map file.
-		with open(self.index_map_path, "r") as imp_f:
-			self.index_map = json.load(imp_f)
+		# Initialize the vector database.
+		self.initialize_vector_db(config)
 
 
-	def search(self, query: str, max_results: int = 50, document_ids: List[str] = []):
+	def initialize_vector_db(self, config: Dict) -> None:
+		# Initialize index directory if it doesn't already exist.
+		if not os.path.exists(self.index_dir):
+			os.makedirs(self.index_dir, exist_ok=True)
+
+		# Initialize (if need be) and connect to the vector database.
+		uri = config["vector-search_config"]["db_uri"]
+		self.db = lancedb.connect(uri)
+
+		# Load model dims to pass along to the schema init.
+		self.dims = config["models"][self.model_name]["dims"]
+
+		# Initialize schema (this will be passed to the database when 
+		# creating a new, empty table in the vector database).
+		self.schema = pa.schema([
+			pa.field("file", pa.utf8()),
+			pa.field("sha1", pa.utf8()),
+			pa.field("text_idx", pa.int32()),
+			pa.field("text_len", pa.int32()),
+			pa.field("vector", pa.list_(pa.float32(), self.dims))
+		])
+
+
+	def search(self, query: str, max_results: int = 50, document_ids: List = [], docs_are_results: bool = False):
 		'''
 		Conducts a search on the wikipedia data with vector search.
 		@param: query str, the raw text that is being queried from the
 			wikipedia data.
 		@param: max_results (int), the maximum number of search results
 			to return.
-		@param: document_ids (List[str]), the list of all document 
-			(paths) that are to be queried from the vector 
-			database/indices.
+		@param: document_ids (List), the list of all document (paths)
+			that are to be queried from the vector database/indices.
+			Can also the the results list from stage 1 search if called
+			from ReRank object.
+		@param: docs_are_results (bool), a flag as to whether to the
+			document_ids list passed in is actually stage 1 search 
+			results. Default is False.
 		@return: returns a list of objects where each object contains
 			an article's path, title, retrieved text, and the slices of
 			that text that is being returned (for BM25 and TF-IDF, 
 			those slices values are for the whole article).
 		'''
 
-		# Perform a global search if document_ids is an empty list. 
-		# Otherwise, perform a targeted search across the index, 
-		# creating a new, temporary index composed of only documents 
-		# from the document_ids list.
-		index_list = self.index_files
-		if len(document_ids) != 0:
-			pass
+		# TODO/NOTE:
+		# Current implementation of search involves "dynamic" embedding
+		# generation (meaning we generate embeddings at search 
+		# runtime). The plan was to originally have preprocess.py 
+		# generate the embeddings for the corpus so that lookup was 
+		# much faster with lancedb, however, the storage required far
+		# exceeded the general storage abilities of most consumer PCs
+		# as well as required substantial runtime to generate all 
+		# embeddings (if waiting around two weeks for the bag-of-words 
+		# preprocessing felt slow, then vector preprocessing was going 
+		# to be glacial in comparison). Hence why dynamic embedding 
+		# generation is implemented but has issues with scaling with 
+		# max_results. For this reason, a hard limit for max_results
+		# and the length of the document ids is set.
 
-		pass
+		assert len(document_ids) > 0,\
+			f"Argument 'document_ids' is expected to be not empty. Received {document_ids}"
+
+		# If the hard limit for the number of document ids or 
+		# max_results is reached, print an error message and return an
+		# empty results list.
+		MAX_LIMIT = 10_000
+		if len(document_ids) > MAX_LIMIT or max_results > MAX_LIMIT:
+			print(f"Number of document_ids or max_results is too high. Hard limit of {MAX_LIMIT} for either.")
+			return []
+		
+		# If the documents passed in are stage 1 search results, copy 
+		# the results to their own variable and reset the document ids
+		# list to be the document ids in those results.
+		if docs_are_results:
+			results = copy.deepcopy(document_ids)
+			document_ids = [result[1] for result in results]
+		
+		# Hash the query. This hash will serve as the table name for
+		# the database.
+		table_name = hashSum(query)
+		current_table_names = self.db.table_names()
+		assert table_name not in current_table_names,\
+			f"Table hash was expected to not exist in database"
+		
+		# Initialize the fresh table for the current query.
+		self.db.create_table(table_name, schema=self.schema)
+		table = self.db.open_table(table_name)
+
+		# NOTE:
+		# Assumes query text will exist within model tokenizer's max 
+		# length. There might be complications for longer queries.
+
+		# Embed the query text.
+		query_embedding = self.embed_text(query)
+
+		# Iterate through the document ids.
+		for doc_idx in range(len(document_ids)):
+			document_id = document_ids[doc_idx]
+			document, sha1 = os.path.basename(document_id).split(".xml")
+			document += ".xml"
+
+			# Load the article text. Loading from stage 1 search 
+			# results is faster than loading from file.
+			if docs_are_results:
+				article_text = results[doc_idx][2]
+			else:
+				article_text = load_article_text(document, [sha1])[0]
+
+			# Preprocess text (chunk it) for embedding.
+			chunk_metadata = vector_preprocessing(
+				article_text, self.config, self.tokenizer
+			)
+
+			# Embed each chunk and update the metadata.
+			for idx, chunk in enumerate(chunk_metadata):
+				# Update/add the metadata for the source filename
+				# and article SHA1.
+				chunk.update({"file": document, "sha1": sha1})
+
+				# Get original text chunk from text.
+				text_idx = chunk["text_idx"]
+				text_len = chunk["text_len"]
+				text_chunk = article_text[text_idx: text_idx + text_len]
+
+				# Embed the text chunk.
+				embedding = self.embed_text(text_chunk)
+
+				# NOTE:
+				# Originally I had embeddings stored into the metadata
+				# dictionary under the "embedding", key but lancddb
+				# requires the embedding data be under the "vector"
+				# name.
+
+				# Update the chunk dictionary with the embedding
+				# and set the value of that chunk in the metadata
+				# list to the (updated) chunk.
+				# chunk.update({"embedding": embedding})
+				chunk.update({"vector": embedding})
+				chunk_metadata[idx] = chunk
+
+		# Add chunk metadata to the vector database. Should be on
+		# "append" mode by default.
+		table.add(chunk_metadata, mode="append")
+
+		# Search the table.
+		results = table.search(query_embedding).limit(max_results)
+		results = results.to_list()
+
+		# Format search results.
+		results = [
+			tuple([
+				result["_distance"], 
+				result["file"] + result["SHA1"], 
+				load_article_text(result["file"], [result["SHA1"]]),
+				[
+					result["text_idx"], 
+					result["text_idx"] + result["text_len"]
+				]
+			])
+			for result in results
+		]
+
+		# Clear table.
+		self.db.drop_table(table_name)
+
+		# Return the search results.
+		return results
+
+
+	def embed_text(self, text: str):
+		# Disable gradients.
+		with torch.no_grad():
+			# Pass original text chunk to tokenizer. Ensure the data is
+			# passed to the appropriate (hardware) device.
+			output = self.model(
+				**self.tokenizer(
+					text,
+					add_special_tokens=False,
+					padding="max_length",
+					return_tensors="pt"
+				).to(self.device)
+			)
+
+			# Compute the embedding by taking the mean of the last 
+			# hidden state tensor across the seq_len axis.
+			embedding = output[0].mean(dim=1)
+
+			# Apply the following transformations to allow the
+			# embedding to be compatible with being stored in the
+			# vector DB (lancedb):
+			#	1) Send the embedding to CPU (if it's not already
+			#		there)
+			#	2) Convert the embedding to numpy and flatten the
+			# 		embedding to a 1D array
+			embedding = embedding.to("cpu")
+			embedding = embedding.numpy()[0]
+		
+		# Return the embedding.
+		return embedding
 
 
 class ReRankSearch:
-	def __init__(self, bow_path, index_path, model, max_results=50, srt=None, use_tf_idf=False):
+	def __init__(self, bow_path: str, index_path: str, model: str, 
+			  	max_results: int = 50, srt: float = -1.0, 
+				use_json: bool = False,	k1: float = 1.0, 
+				b: float = 0.0, device: str = "cpu", 
+				use_tf_idf: bool = False):
 		# Set class variables.
 		self.bow_dir = bow_path
 		self.index_dir = index_path
 		self.model = model
 		self.max_results = max_results
 		self.srt = srt
+		self.use_json = use_json
 		self.use_tfidf = use_tf_idf
+		self.device = device
 
 		# Initialize search objects.
-		self.bm25 = BM25(self.bow_dir, self.srt)
-		self.tf_idf = TF_IDF(self.bow_dir, self.srt)
-		self.vector_search = VectorSearch(self.model, self.index_dir)
+		self.tf_idf, self.bm25 = None, None
+		if use_tf_idf:
+			self.tf_idf = TF_IDF(
+				self.bow_dir, self.srt, use_json=self.use_json
+			)
+		else:
+			self.bm25 = BM25(
+				self.bow_dir, self.srt, k1=k1, b=b, 
+				use_json=self.use_json
+			)
+		self.vector_search = VectorSearch(
+			self.model, self.index_dir, self.device
+		)
 
 		# Organize search into stages.
-		self.stage1 = self.bm25 if not use_tf_idf else self.tf_idf
+		self.stage1 = self.tf_idf if self.use_tfidf else self.bm25
 		self.stage2 = self.vector_search
 
 
-	def search(self, query, max_results=50):
+	def search(self, query: str, max_results: int = 50):
 		# Pass the search query to the first stage.
 		stage_1_results = self.stage1.search(
 			query, max_results=max_results
@@ -758,14 +1003,16 @@ class ReRankSearch:
 		if len(stage_1_results) == 0:
 			return stage_1_results
 
-		document_ids = [
-			result["document_path"] for result in stage_1_results
-		]
+		# document_ids = [
+		# 	# result["document_path"] for result in stage_1_results
+		# 	result[1] for result in stage_1_results
+		# ]
 
 		# From the first stage, isolate the document paths to target in
 		# the vector search.
 		stage_2_results = self.stage2.search(
-			query, max_results=max_results, document_ids=document_ids
+			query, max_results=max_results, document_ids=stage_1_results,
+			docs_are_results=True
 		)
 
 		# Return the search results from the second stage.
