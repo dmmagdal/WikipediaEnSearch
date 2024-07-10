@@ -58,7 +58,7 @@ def test() -> None:
 	rerank = ReRankSearch(bow_dir, index_dir, model, device=device)
 	search_4_init_end = time.perf_counter()
 	search_4_init_elapsed = search_4_init_end - search_4_init_start
-	print(f"Time to initialize Vector search: {search_4_init_elapsed:.6f} seconds")
+	print(f"Time to initialize Rerank search: {search_4_init_elapsed:.6f} seconds")
 
 	search_engines = [
 		("tf-idf", tf_idf), 
