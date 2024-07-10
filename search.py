@@ -342,7 +342,7 @@ class BagOfWords:
 		word_count = [0.0] * len(words)
 
 		# Iterate through each file.
-		for file in self.word_to_doc_files:
+		for file in tqdm(self.word_to_doc_files):
 			# Load the word to doc mappings from file.
 			word_to_docs = load_data_file(file, use_json=self.use_json)
 
@@ -350,7 +350,7 @@ class BagOfWords:
 			# each respective word if applicable.
 			for word_idx in range(len(words)):
 				word = words[word_idx]
-				if words[word] in word_to_docs:
+				if word in word_to_docs:
 					word_count[word_idx] += word_to_docs[word]
 
 		# Compute inverse document frequency for each term.
@@ -422,7 +422,7 @@ class TF_IDF(BagOfWords):
 		return sorted_rankings
 	
 
-	def compute_tfidf(self, words: List[str], query_word_freq: Dict, max_results: int = -1.0):
+	def compute_tfidf(self, words: List[str], query_word_freq: Dict, max_results: int = -1):
 		'''
 		Iterate through all the documents in the corpus and compute the
 			TF-IDF for each document in the corpus. Sort the results
@@ -433,7 +433,7 @@ class TF_IDF(BagOfWords):
 		@param: query_word_freq (Dict), the word frequency mapping for 
 			the input search query.
 		@param: max_results (int), the maximum number of results to 
-			return. Default is -1.0 (no limit).
+			return. Default is -1 (no limit).
 		@return: returns the sorted list of search results. 
 		'''
 		# Sort the set of words (ensures consistent positions of each 
@@ -464,7 +464,7 @@ class TF_IDF(BagOfWords):
 		# popped when we need to pushpop the largest scoring tuple.
 
 		# Compute TF-IDF for every file.
-		for file in self.doc_to_word_files:
+		for file in tqdm(self.doc_to_word_files):
 			# Load the doc to word frequency mappings from file.
 			doc_to_words = load_data_file(file, self.use_json)
 
@@ -521,7 +521,7 @@ class TF_IDF(BagOfWords):
 				# The heapq sorts by the first value in the tuple so 
 				# that is why the cosine similarity score is the first
 				# item in the tuple.
-				if max_results != -1.0 and len(corpus_tfidf_heap) >= max_results:
+				if max_results != -1 and len(corpus_tfidf_heap) >= max_results:
 					# Pushpop the highest (cosine similarity) value
 					# tuple from the heap to make way for the next
 					# tuple.
@@ -592,7 +592,7 @@ class BM25(BagOfWords):
 		assert isinstance(max_results, int) and str(max_results).isdigit() and max_results > 0, f"max_results argument is expected to be some int value greater than zero. Recieved {max_results}"
 
 		# Preprocess the search query to a bag of words.
-		words, _ = bow_preprocessing(query, False)
+		words = bow_preprocessing(query, False)
 
 		# Compute the BM25 for the corpus.
 		corpus_bm25 = self.compute_bm25(words, max_results=max_results)
@@ -622,7 +622,7 @@ class BM25(BagOfWords):
 		return sorted_rankings
 
 
-	def compute_bm25(self, words: List[str], max_results: int = -1.0):
+	def compute_bm25(self, words: List[str], max_results: int = -1):
 		'''
 		Iterate through all the documents in the corpus and compute the
 			BM25 for each document in the corpus. Sort the results
@@ -633,7 +633,7 @@ class BM25(BagOfWords):
 		@param: query_word_freq (Dict), the word frequency mapping for 
 			the input search query.
 		@param: max_results (int), the maximum number of results to 
-			return. Default is -1.0 (no limit).
+			return. Default is -1 (no limit).
 		@return: returns the BM25 for the query as well as the sorted
 			list of search results. 
 		'''
@@ -657,7 +657,7 @@ class BM25(BagOfWords):
 		# the term values into a sum for the document score.
 
 		# Compute BM25 for every file.
-		for file in self.doc_to_word_files:
+		for file in tqdm(self.doc_to_word_files):
 			# Load the doc to word frequency mappings from file.
 			doc_to_words = load_data_file(file, self.use_json)
 
@@ -702,7 +702,7 @@ class BM25(BagOfWords):
 				# sorts by the first value in the tuple so that is why
 				# the cosine similarity score is the first item in the 
 				# tuple.
-				if max_results != -1.0 and len(corpus_bm25_heap) >= max_results:
+				if max_results != -1 and len(corpus_bm25_heap) >= max_results:
 					# Pushpop the smallest (BM25) value tuple from the 
 					# heap to make way for the next tuple.
 					heapq.heappushpop(
@@ -853,7 +853,7 @@ class VectorSearch:
 		query_embedding = self.embed_text(query)
 
 		# Iterate through the document ids.
-		for doc_idx in range(len(document_ids)):
+		for doc_idx in tqdm(range(len(document_ids))):
 			document_id = document_ids[doc_idx]
 			document, sha1 = os.path.basename(document_id).split(".xml")
 			document += ".xml"

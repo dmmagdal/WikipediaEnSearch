@@ -11,6 +11,7 @@ setup(
 	# name="msgpack_loader",
 	# ext_modules=cythonize(extensions),
 	ext_modules=cythonize(
-		"search_helper.pyx", annotate=True
+		# "search_helper.pyx", annotate=True
+		"search.pyx", annotate=True
 	),
 )
