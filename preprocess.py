@@ -843,7 +843,7 @@ def merge_mappings(results: List[List]) -> Tuple[Dict]:
 	return aggr_doc_to_word, aggr_word_to_doc, aggr_vector_metadata
 
 
-def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[str], num_proc: int=1):
+def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[str], num_proc: int = 1):
 	'''
 	Preprocess the text (in a multiple processors.
 	@param: args (Namespace), the arguments passed in from the 
