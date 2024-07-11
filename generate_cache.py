@@ -346,10 +346,25 @@ def main():
 		else:
 			open(progress_file, "w+").close()
 
-	# Compute corpus size (number of documents/articles).
-	corpus_size = get_number_of_documents(
-		d2w_data_files, args.use_json
-	)
+	# Load corpus size values from config.
+	tfidf_corpus_size = config["tf-idf_config"]["corpus_size"]
+	bm_corpus_size = config["bm25_config"]["corpus_size"]
+
+	# Compute the corpus size if the values either mismatch or at least
+	# one of the values are zero.
+	condition1 = tfidf_corpus_size != bm_corpus_size
+	condition2 = (tfidf_corpus_size == 0) or (bm_corpus_size == 0)
+	if condition1 or condition2:
+		# Compute corpus size (number of documents/articles).
+		corpus_size = get_number_of_documents(
+			d2w_data_files, args.use_json
+		)
+
+		# Update config parameter and save.
+		config["tf-idf_config"]["corpus_size"] = corpus_size
+		config["bm25_config"]["corpus_size"] = corpus_size
+		with open("config.json", "w") as f:
+			json.dump(config, f, indent=4)
 
 	# Iterate through each file and preprocess it.
 	for idx in range(len(d2w_metadata_path)):
