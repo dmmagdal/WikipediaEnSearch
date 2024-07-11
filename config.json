@@ -21,7 +21,7 @@
         "token_overlap": 64,
         "doc_to_words_path": "./metadata/bag_of_words/doc_to_words",
         "word_to_docs_path": "./metadata/bag_of_words/word_to_docs",
-        "tf_idf_cache": "./metadata/bag_of_words/tf_idf_cache",
+        "tf_idf_cache_path": "./metadata/bag_of_words/tf_idf_cache",
         "vector_metadata_path": "./metadata/vector"
     },
     "models": {
