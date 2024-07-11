@@ -64,7 +64,7 @@ def main():
 		# ] # optimization implemented but VERY SLOW
 		file_unique_words = list(
 			set(word_to_docs.keys()).difference(set(unique_words.keys()))
-		) # optimization implemented and actually resulted not freezing (unlike the implementations above)
+		) # optimization implemented and actually resulted not freezing (unlike the implementations above) - I think this has resulted in the seedup/optimziation I was looking for
 		# file_unique_words = list(word_to_docs.keys()) # Unoptimized (not tested for performance)
 
 		# Compute the IDFs for each file unique word.
