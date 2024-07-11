@@ -358,6 +358,7 @@ def main():
 	condition2 = (tfidf_corpus_size == 0) or (bm_corpus_size == 0)
 	if condition1 or condition2:
 		# Compute corpus size (number of documents/articles).
+		print("Computing corpus size...")
 		corpus_size = get_number_of_documents(
 			d2w_data_files, args.use_json
 		)
@@ -380,6 +381,8 @@ def main():
 		if base_file in progress:
 			print(f"Already processed file ({idx + 1}/{len(d2w_files)}) {base_file}.")
 			continue
+
+		print(f"Processing file ({idx + 1}/{len(d2w_files)}) {base_file}...")
 
 		# Open the current document-to-words file.
 		doc_to_words = load_data_file(
