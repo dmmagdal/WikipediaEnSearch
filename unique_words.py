@@ -65,8 +65,7 @@ def main():
 		file_unique_words = list(
 			set(word_to_docs.keys()).difference(set(unique_words.keys()))
 		)
-
-		file_unique_words = [word for word in list(word_to_docs)]
+		# file_unique_words = list(word_to_docs.keys())
 
 		# Compute the IDFs for each file unique word.
 		word_idfs = compute_idf(
