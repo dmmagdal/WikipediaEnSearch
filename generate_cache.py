@@ -445,9 +445,12 @@ def main():
 		words = sorted(list(words))
 
 		# Compute the IDF for all words.
+		print(f"Computing IDF for all words in {base_file}...")
 		word_idfs = compute_idf(
 			w2d_data_files, corpus_size, words, args.use_json
 		)
+
+		print(f"Computing TF-IDF for all (document. word) pairs in {base_file}...")
 
 		if args.num_proc > 1:
 			# Determine the number of CPU cores to use (this will be
