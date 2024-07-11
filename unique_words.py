@@ -57,15 +57,15 @@ def main():
 		# file_unique_words = [
 		# 	word for word in list(word_to_docs.keys())
 		# 	if word not in list(unique_words.keys())
-		# ]
+		# ] # optimization implemented but VERY SLOW
 		# file_unique_words = [
 		# 	word for word in list(word_to_docs.keys())
 		# 	if word not in set(unique_words.keys())
-		# ]
+		# ] # optimization implemented but VERY SLOW
 		file_unique_words = list(
 			set(word_to_docs.keys()).difference(set(unique_words.keys()))
-		)
-		# file_unique_words = list(word_to_docs.keys())
+		) # optimization implemented and actually resulted in the incremental seedups/optimziation I was looking for
+		# file_unique_words = list(word_to_docs.keys()) # Unoptimized (not tested for performance)
 
 		# Compute the IDFs for each file unique word.
 		word_idfs = compute_idf(
