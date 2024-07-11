@@ -9,6 +9,7 @@ import json
 import os
 
 from generate_cache import load_data_file, write_data_file, compute_idf
+from generate_cache import get_number_of_documents
 
 
 def main():
@@ -31,7 +32,13 @@ def main():
 	# Isolate the word to documents mappings folder.
 	preprocessing = config["preprocessing"]
 	w2d_metadata_path = preprocessing["word_to_docs_path"]
+	d2w_metadata_path = preprocessing["doc_to_words_path"]
 	corpus_size = config["tf-idf_config"]["corpus_size"]
+
+	if corpus_size == 0:
+		corpus_size = get_number_of_documents(
+			d2w_metadata_path, args.use_json
+		)
 
 	# Load all word to document files.
 	w2d_files = sorted(
