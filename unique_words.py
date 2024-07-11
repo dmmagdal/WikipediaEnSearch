@@ -8,9 +8,6 @@ import argparse
 import json
 import os
 
-import msgpack
-from tqdm import tqdm
-
 from generate_cache import load_data_file, write_data_file, compute_idf
 
 
