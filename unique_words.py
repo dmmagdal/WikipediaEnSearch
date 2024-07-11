@@ -56,7 +56,7 @@ def main():
 		# Isolate the words that are unique to the file.
 		file_unique_words = [
 			word for word in list(word_to_docs.keys())
-			if word not in list(unique_words.keys())
+			if word not in set(unique_words.keys())
 		]
 
 		# Compute the IDFs for each file unique word.

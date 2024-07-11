@@ -366,7 +366,6 @@ def main():
 			print(f"Expected the word-to-documents and document-to-words files to match 1-to-1.")
 			print(f"Make sure all metadata documents have corresponding matches.")
 			exit()
-	# zipped_list = list(zip(w2d_data_files, d2w_data_files))
 
 	###################################################################
 	# PROGRESS CHECK
@@ -463,6 +462,8 @@ def main():
 			)
 		else:
 			tf_idf_data = process_metadata(word_idfs, doc_to_words)
+
+		exit()
 
 		# Write metadata to the respective files.
 		# if len(list(tf_idf_data.keys())) > 0:
