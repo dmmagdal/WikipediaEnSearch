@@ -50,7 +50,9 @@ def main():
 	unique_words = dict()
 
 	# Iterate through the word to document files.
-	for file in tqdm(w2d_files):
+	for idx, file in enumerate(w2d_files):
+		print(f"Processing file {idx + 1}/{len(w2d_files)} {file}...")
+
 		# Load the file.
 		word_to_docs = load_data_file(file, args.use_json)
 
