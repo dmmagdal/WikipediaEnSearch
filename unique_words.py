@@ -54,10 +54,19 @@ def main():
 		word_to_docs = load_data_file(file, args.use_json)
 
 		# Isolate the words that are unique to the file.
-		file_unique_words = [
-			word for word in list(word_to_docs.keys())
-			if word not in set(unique_words.keys())
-		]
+		# file_unique_words = [
+		# 	word for word in list(word_to_docs.keys())
+		# 	if word not in list(unique_words.keys())
+		# ]
+		# file_unique_words = [
+		# 	word for word in list(word_to_docs.keys())
+		# 	if word not in set(unique_words.keys())
+		# ]
+		file_unique_words = list(
+			set(word_to_docs.keys()).difference(set(unique_words.keys()))
+		)
+
+		file_unique_words = [word for word in list(word_to_docs)]
 
 		# Compute the IDFs for each file unique word.
 		word_idfs = compute_idf(
