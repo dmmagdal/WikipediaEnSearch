@@ -35,10 +35,11 @@ def main():
 	d2w_metadata_path = preprocessing["doc_to_words_path"]
 	corpus_size = config["tf-idf_config"]["corpus_size"]
 
-	if corpus_size == 0:
-		corpus_size = get_number_of_documents(
-			d2w_metadata_path, args.use_json
-		)
+	d2w_files = sorted([
+		os.path.join(d2w_metadata_path, file) 
+		for file in os.listdir(d2w_metadata_path)
+		if file.endswith(extension)
+	])
 
 	# Load all word to document files.
 	w2d_files = sorted(
@@ -48,6 +49,10 @@ def main():
 			if file.endswith(extension)
 		]
 	)
+
+	# Compute the corpus size if necessary.
+	if corpus_size == 0:
+		corpus_size = get_number_of_documents(d2w_files, args.use_json)
 
 	# Initialize dictionary storing mapping of each unique word to
 	# its respective IDF.
