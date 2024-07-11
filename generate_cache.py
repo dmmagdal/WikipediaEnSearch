@@ -7,7 +7,7 @@
 
 
 import argparse
-from argparse import Namespace
+# from argparse import Namespace
 import gc
 import json
 import math
@@ -57,6 +57,50 @@ def load_data_file(path: str, use_json: bool = False) -> Dict:
 	if use_json:
 		return load_data_from_json(path)
 	return load_data_from_msgpack(path)
+
+
+def write_data_to_msgpack(path: str, data: Dict) -> None:
+	'''
+	Write data (dictionary) to a msgpack file given the path.
+	@param: path (str), the path of the data file that is to be 
+		written/created.
+	@param: data (Dict), the structured data (dictionary) that is to be
+		written to the file.
+	@return: returns nothing.
+	'''
+	with open(path, 'wb+') as f:
+		packed = msgpack.packb(data)
+		f.write(packed)
+
+
+def write_data_to_json(path: str, data: Dict) -> None:
+	'''
+	Write data (dictionary) to a json file given the path.
+	@param: path (str), the path of the data file that is to be 
+		written/created.
+	@param: data (Dict), the structured data (dictionary) that is to be
+		written to the file.
+	@return: returns nothing.
+	'''
+	with open(path, "w+") as f:
+		json.dump(data, f, indent=4)
+
+
+def write_data_file(path: str, data: Dict, use_json: bool = False) -> None:
+	'''
+	Write data (dictionary) to either a JSON or msgpack file given the
+		path.
+	@param: path (str), the path of the data file that is to be loaded.
+	@param: data (Dict), the structured data (dictionary) that is to be
+		written to the file.
+	@param: use_json (bool), whether to write the data file to a JSON 
+		or msgpack (default is False).
+	@return: returns nothing.
+	'''
+	if use_json:
+		load_data_from_json(path, data)
+	else:
+		load_data_from_msgpack(path, data)
 
 
 def get_number_of_documents(doc_to_word_files: List[str], use_json: bool = False) -> int:
@@ -368,13 +412,15 @@ def main():
 		config["bm25_config"]["corpus_size"] = corpus_size
 		with open("config.json", "w") as f:
 			json.dump(config, f, indent=4)
+	else:
+		corpus_size = tfidf_corpus_size
 
 	# Iterate through each file and preprocess it.
 	for idx in range(len(d2w_metadata_path)):
 		# Isolate the base files.
 		base_file = d2w_files[idx]
 		d2w_file = d2w_data_files[idx]
-		w2d_file = w2d_data_files[idx]
+		# w2d_file = w2d_data_files[idx]
 
 		# Check if the file has already been processed. If so, skip the
 		# file.
@@ -385,9 +431,7 @@ def main():
 		print(f"Processing file ({idx + 1}/{len(d2w_files)}) {base_file}...")
 
 		# Open the current document-to-words file.
-		doc_to_words = load_data_file(
-			d2w_data_files[file_idx], args.use_json
-		)
+		doc_to_words = load_data_file(d2w_file, args.use_json)
 
 		# Isolate the set of all unique words in the current 
 		# document-to-words file.
@@ -401,7 +445,9 @@ def main():
 		words = sorted(list(words))
 
 		# Compute the IDF for all words.
-		word_idfs = compute_idf(w2d_data_files, corpus_size, words, args.use_json)
+		word_idfs = compute_idf(
+			w2d_data_files, corpus_size, words, args.use_json
+		)
 
 		if args.num_proc > 1:
 			# Determine the number of CPU cores to use (this will be
@@ -413,7 +459,18 @@ def main():
 		else:
 			tf_idf_data = process_metadata(word_idfs, doc_to_words)
 
-		pass
+		# Write metadata to the respective files.
+		if len(list(tf_idf_data.keys())) > 0:
+			path = os.path.join(cache_metadata_path, base_file)
+			write_data_file(path, tf_idf_data, args.use_json)
+
+		# Update progress files as necessary.
+		# progress.append(base_file)
+		# with open(progress_file, "w+") as pf:
+		# 	pf.write("\n".join(progress))
+
+		# Perform garbage collection.
+		gc.collect()
 
 	# Exit the program.
 	exit(0)
