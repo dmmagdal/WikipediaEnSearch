@@ -105,10 +105,12 @@ def compute_idf(word_to_doc_files: Dict, corpus_size: int, words: List[str], use
 
 		# Iterate through each word. Update the total count for
 		# each respective word if applicable.
-		for word_idx in range(len(words)):
-			word = words[word_idx]
+		# for word_idx in range(len(words)):
+		# 	word = words[word_idx]
+		# 	if word in word_to_docs:
+		# 		word_count[word_idx] += word_to_docs[word]
+		for word in words:
 			if word in word_to_docs:
-				# word_count[word_idx] += word_to_docs[word]
 				word_count[word] += word_to_docs[word]
 
 	# Compute inverse document frequency for each term.
@@ -396,7 +398,7 @@ def main():
 		words = sorted(list(words))
 
 		# Compute the IDF for all words.
-		word_idfs = compute_idf(w2d_data_files, words, args.use_json)
+		word_idfs = compute_idf(w2d_data_files, corpus_size, words, args.use_json)
 
 		if args.num_proc > 1:
 			# Determine the number of CPU cores to use (this will be
