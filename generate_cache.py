@@ -460,9 +460,9 @@ def main():
 			tf_idf_data = process_metadata(word_idfs, doc_to_words)
 
 		# Write metadata to the respective files.
-		if len(list(tf_idf_data.keys())) > 0:
-			path = os.path.join(cache_metadata_path, base_file)
-			write_data_file(path, tf_idf_data, args.use_json)
+		# if len(list(tf_idf_data.keys())) > 0:
+		# 	path = os.path.join(cache_metadata_path, base_file)
+		# 	write_data_file(path, tf_idf_data, args.use_json)
 
 		# Update progress files as necessary.
 		# progress.append(base_file)
