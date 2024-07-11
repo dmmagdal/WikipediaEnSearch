@@ -4,6 +4,8 @@
 # has to read it and minimizes the compute. This is another 
 # preprocessing script that should be run after preprocess.py but 
 # before searchwiki.py.
+# Python 3.9
+# Windows/MacOS/Linux
 
 
 import argparse
