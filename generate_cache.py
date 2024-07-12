@@ -100,9 +100,9 @@ def write_data_file(path: str, data: Dict, use_json: bool = False) -> None:
 	@return: returns nothing.
 	'''
 	if use_json:
-		load_data_from_json(path, data)
+		write_data_to_json(path, data)
 	else:
-		load_data_from_msgpack(path, data)
+		write_data_to_msgpack(path, data)
 
 
 def get_number_of_documents(doc_to_word_files: List[str], use_json: bool = False) -> int:

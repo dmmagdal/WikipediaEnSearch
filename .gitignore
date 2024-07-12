@@ -18,6 +18,7 @@
 # preprocess state files
 preprocess_state_bow.txt
 preprocess_state_vector.txt
+generate_cache_state.txt
 
 # xml test file(s)
 *.xml

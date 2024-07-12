@@ -4,14 +4,14 @@
         "doc_to_words": "./metadata/bag_of_words/doc_to_words",
         "word_to_docs": "./metadata/bag_of_words/word_to_docs",
         "tf_idf_cache": "./metadata/bag_of_words/tf_idf_cache",
-        "corpus_size": 0,
+        "corpus_size": 21118935,
         "avg_doc_len": 0
     },
     "tf-idf_config": {
         "doc_to_words": "./metadata/bag_of_words/doc_to_words",
         "word_to_docs": "./metadata/bag_of_words/word_to_docs",
         "tf_idf_cache": "./metadata/bag_of_words/tf_idf_cache",
-        "corpus_size": 0
+        "corpus_size": 21118935
     },
     "vector-search_config": {
         "model": "bert",
