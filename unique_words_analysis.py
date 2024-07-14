@@ -33,7 +33,7 @@ def main():
 			if word[0] == char:
 				char_counts[char] += 0
 
-	print(f"Frequency of each character starting a word:\n")
+	print(f"Frequency of each character starting a word:")
 	print(json.dumps(char_counts, indent=4))
 
 	# Exit the program.
