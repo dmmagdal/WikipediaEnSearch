@@ -493,6 +493,8 @@ def main():
 	###################################################################
 
 	if len(idf_progress) == 0:
+		print("Processing IDF for all words in the corpus...")
+
 		# Compute the IDF for all words in the corpus.
 		word_idf = corpus_word_idf(
 			w2d_data_files, corpus_size, args.use_json
