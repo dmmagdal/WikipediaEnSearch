@@ -11,6 +11,7 @@
 import argparse
 # from argparse import Namespace
 import gc
+import hashlib
 import json
 import math
 import multiprocessing as mp
@@ -105,6 +106,23 @@ def write_data_file(path: str, data: Dict, use_json: bool = False) -> None:
 		write_data_to_msgpack(path, data)
 
 
+def hashSum(data: str) -> str:
+	'''
+	Compute the SHA256SUM of the xml data. This is used as part of the
+		naming scheme down the road.
+	@param: data (str), the raw string data from the xml data.
+	@return: returns the SHA256SUM hash.
+	'''
+	# Initialize the SHA256 hash object.
+	sha256 = hashlib.sha256()
+
+	# Update the hash object with the (xml) data.
+	sha256.update(data.encode('utf-8'))
+
+	# Return the digested hash object (string).
+	return sha256.hexdigest()
+
+
 def get_number_of_documents(doc_to_word_files: List[str], use_json: bool = False) -> int:
 		'''
 		Count the number of documents recorded in the corpus.
@@ -170,6 +188,48 @@ def compute_idf(word_to_doc_files: Dict, corpus_size: int, words: List[str], use
 		if word_count[word] != 0.0 else 0.0
 		for word in words
 	}
+
+
+def corpus_word_idf(w2d_data_files: List[str], corpus_size: int, use_json: bool = False) -> Dict[str, int]:
+	'''
+	Compute the Inverse Document Frquency of all unique words in the 
+		corpus.
+	@param: w2d_data_files (List[str]), the (ordered) list of all 
+		word to document files.
+	@param: corpus (int), the size of the corpus (how many documents 
+		that are in the corpus).
+	@param: use_json (bool), whenter to load files with JSON or 
+		msgpack. Default is False (msgpack).
+	@param: returns the Inverse Document Frequency for all words
+		in the corpus. The data is returned in a dictionary mapping 
+		each word to its IDF vale.
+	'''
+	# Initialize dictionary storing mapping of each unique word to
+	# its respective IDF.
+	unique_words = dict()
+
+	# Iterate through the word to document files.
+	for idx, file in enumerate(w2d_data_files):
+		print(f"Processing file {idx + 1}/{len(w2d_data_files)} {file}...")
+
+		# Load the file.
+		word_to_docs = load_data_file(file, use_json)
+
+		# Isolate the words that are unique to the file.
+		file_unique_words = list(
+			set(word_to_docs.keys()).difference(set(unique_words.keys()))
+		)
+
+		# Compute the IDFs for each file unique word.
+		word_idfs = compute_idf(
+			w2d_data_files, corpus_size, file_unique_words, use_json
+		)
+
+		# Update the main word to IDF dictionary.
+		unique_words.update(word_idfs)
+	
+	# Return the unique words to IDF mapping.
+	return unique_words
 
 
 def merge_results(results):
@@ -296,7 +356,9 @@ def main():
 	preprocessing = config["preprocessing"]
 	d2w_metadata_path = preprocessing["doc_to_words_path"]
 	w2d_metadata_path = preprocessing["word_to_docs_path"]
-	cache_metadata_path = preprocessing["tf_idf_cache_path"]
+	tfidf_metadata_path = preprocessing["tf_idf_cache_path"]
+	idf_metadata_path = preprocessing["idf_cache_path"]
+
 
 	# Verify metadata directory paths exist.
 	if not os.path.exists(d2w_metadata_path):
@@ -311,8 +373,8 @@ def main():
 	
 	# Initialize the directory for the TF-IDF cache if it doesn't 
 	# already exist.
-	if not os.path.exists(cache_metadata_path):
-		os.makedirs(cache_metadata_path, exist_ok=True)
+	if not os.path.exists(tfidf_metadata_path):
+		os.makedirs(tfidf_metadata_path, exist_ok=True)
 
 	# NOTE:
 	# I tried to make this cleaner but python would throw an error on
@@ -371,10 +433,12 @@ def main():
 	# PROGRESS CHECK
 	###################################################################
 	# Progress files.
-	progress_file = "./generate_cache_state.txt"
+	progress_file = "./generate_tfidf_state.txt"
+	idf_progress_file = "./generate_idf_state.txt"
 
 	# Progress list.
 	progress = []
+	idf_progress = []
 
 	# TODO:
 	# Refactor this code to not use the same line(s) twice to 
@@ -383,6 +447,7 @@ def main():
 	if args.restart:
 		# Clear the progress files if the restart flag has been thrown.
 		open(progress_file, "w+").close()
+		open(idf_progress_file, "w+").close()
 	else:
 		# Override progress list with file contents (if the restart
 		# flag has not been thrown).
@@ -392,6 +457,13 @@ def main():
 			progress = [file.rstrip("\n") for file in progress]
 		else:
 			open(progress_file, "w+").close()
+
+		if os.path.exists(idf_progress_file):
+			with open(idf_progress_file, "r") as pf2: 
+				idf_progress = pf2.readlines()
+			idf_progress = [file.rstrip("\n") for file in idf_progress]
+		else:
+			open(idf_progress_file, "w+").close()
 
 	# Load corpus size values from config.
 	tfidf_corpus_size = config["tf-idf_config"]["corpus_size"]
@@ -415,6 +487,41 @@ def main():
 			json.dump(config, f, indent=4)
 	else:
 		corpus_size = tfidf_corpus_size
+
+	###################################################################
+	# COMPUTE IDF
+	###################################################################
+
+	if len(idf_progress) == 0:
+		# Compute the IDF for all words in the corpus.
+		word_idf = corpus_word_idf(
+			w2d_data_files, corpus_size, args.use_json
+		)
+
+		# Chunk the data and save it to file(s).
+		chunk_size = 5_000_0000
+		words = sorted(list(word_idf.keys()))
+		for i in range(0, len(words), chunk_size):
+			# Isolate the subset.
+			subset_words = words[i:i + chunk_size]
+			subset_idf = {
+				word: word_idf[word] for word in subset_words
+			}
+
+			# First and last word in the subset are the identifiers
+			# for the file.
+			first, last = subset_words[0], subset_words[-1]
+			name = first + "-" + last
+
+			# Write to file.
+			subset_path = os.path.join(
+				idf_metadata_path, name + extension
+			)
+			write_data_file(subset_path, subset_idf, args.use_json)
+
+	###################################################################
+	# COMPUTE TF & TF-IDF
+	###################################################################
 
 	# Iterate through each file and preprocess it.
 	for idx in range(len(d2w_metadata_path)):
