@@ -31,7 +31,7 @@ def main():
 	for word in list(data.keys()):
 		for char in string.printable:
 			if word[0] == char:
-				char_counts[char] += 0
+				char_counts[char] += 1
 
 	print(f"Frequency of each character starting a word:")
 	print(json.dumps(char_counts, indent=4))
