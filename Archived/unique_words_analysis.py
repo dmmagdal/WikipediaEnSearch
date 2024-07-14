@@ -11,7 +11,7 @@ import json
 import math
 import string
 
-from generate_cache import load_data_file
+from generate_tfidf_cache import load_data_file
 
 
 def main():

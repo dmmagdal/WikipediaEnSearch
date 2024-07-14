@@ -8,8 +8,8 @@ import argparse
 import json
 import os
 
-from generate_cache import load_data_file, write_data_file, compute_idf
-from generate_cache import get_number_of_documents
+from generate_tfidf_cache import load_data_file, write_data_file, compute_idf
+from generate_tfidf_cache import get_number_of_documents
 
 
 def main():
