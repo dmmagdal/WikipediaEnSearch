@@ -359,6 +359,12 @@ def main():
 	tfidf_metadata_path = preprocessing["tf_idf_cache_path"]
 	idf_metadata_path = preprocessing["idf_cache_path"]
 
+	# Initialize the cache paths if necessary.
+	if not os.path.exists(tfidf_metadata_path):
+		os.makedirs(tfidf_metadata_path, exist_ok=True)
+
+	if not os.path.exists(idf_metadata_path):
+		os.makedirs(idf_metadata_path, exist_ok=True)
 
 	# Verify metadata directory paths exist.
 	if not os.path.exists(d2w_metadata_path):
@@ -501,8 +507,9 @@ def main():
 		)
 
 		# Chunk the data and save it to file(s).
-		chunk_size = 5_000_0000
+		chunk_size = 5_000_000
 		words = sorted(list(word_idf.keys()))
+		idx = 1
 		for i in range(0, len(words), chunk_size):
 			# Isolate the subset.
 			subset_words = words[i:i + chunk_size]
@@ -512,14 +519,29 @@ def main():
 
 			# First and last word in the subset are the identifiers
 			# for the file.
-			first, last = subset_words[0], subset_words[-1]
-			name = first + "-" + last
+			# first, last = subset_words[0], subset_words[-1]
+			# name = first + "-" + last
+
+			# NOTE:
+			# Using first and last word in the subset was a good idea
+			# with regards to sorting. However, this caused issues with
+			# saving the file (primarily that file names got to be too
+			# long). Now, just increment a counter/index.
+			name = "idf_" + str(idx)
+			idx += 1
 
 			# Write to file.
 			subset_path = os.path.join(
 				idf_metadata_path, name + extension
 			)
 			write_data_file(subset_path, subset_idf, args.use_json)
+
+			# Update progress files as necessary.
+			idf_progress.append(subset_path)
+			with open(idf_progress_file, "w+") as pf:
+				pf.write("\n".join(idf_progress))
+
+	# exit()
 
 	###################################################################
 	# COMPUTE TF & TF-IDF
