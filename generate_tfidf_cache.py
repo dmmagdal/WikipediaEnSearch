@@ -591,6 +591,15 @@ def main():
 		print(f"Computing IDF for all words in {base_file}...")
 
 		# NOTE:
+		# At the time/commit of writing this note, multiprocessing
+		# does not seem necessary. In fact, it is actually a lot 
+		# slower (probably because it has to divide up the data into 
+		# chunks or at least that's my best guess as to why it's slower
+		# than using a single processor). Current speed is around 30s
+		# per file (x 195 files gives you ~100 minutes or between 2 to 
+		# 3 hours).
+
+		# NOTE:
 		# The following code block down below that is commented out is
 		# intended to ensure efficiency in that only a subsection of 
 		# the corpus word IDF mapping is used when processing a file.
@@ -641,7 +650,7 @@ def main():
 		else:
 			tf_idf_data = process_metadata(word_idfs, doc_to_words)
 
-		exit()
+		# exit()
 
 		# Write metadata to the respective files.
 		if len(list(tf_idf_data.keys())) > 0:
