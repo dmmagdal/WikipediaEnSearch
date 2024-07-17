@@ -279,6 +279,7 @@ def multiprocess_metadata(words_idf: Dict, doc_to_words: Dict, num_proc: int = 1
 
 
 def process_metadata(words_idf: Dict, doc_to_words: Dict):
+	# Initialize file TF-IDF metadata dictionary.
 	file_tfidf = dict()
 
 	# Iterate through all documents in the doc-to-words mapping.
@@ -290,13 +291,6 @@ def process_metadata(words_idf: Dict, doc_to_words: Dict):
 
 		# Compute the document size (in words).
 		doc_len = sum([value for value in word_freq_map.values()])
-
-		# Iterate through the list of words.
-		# for word in list(words_idf.keys()):
-		# 	# Skip words that do not appear in the document (TF-IDF is 
-		# 	# 0).
-		# 	if word not in list(word_freq_map.keys()):
-		# 		continue
 
 		# Iterate through the list of words in the current document's
 		# word frequency mapping.
@@ -556,6 +550,7 @@ def main():
 		for file in idf_files:
 			corpus_word_idfs.update(load_data_file(file, args.use_json))
 
+	# Verify corpus word IDF mapping is initialized.
 	assert corpus_word_idfs != None
 
 	# exit()
@@ -593,50 +588,60 @@ def main():
 		# Convert words set to a list.
 		words = sorted(list(words))
 
+		print(f"Computing IDF for all words in {base_file}...")
+
+		# NOTE:
+		# The following code block down below that is commented out is
+		# intended to ensure efficiency in that only a subsection of 
+		# the corpus word IDF mapping is used when processing a file.
+		# This would decrease memory overhead especially when using
+		# multiprocessing. However, it was found that this was 
+		# particularly SLOW when executed and would take several 
+		# minutes. Given how the corpus word IDF mappings are still
+		# somewhat small compared to available memory, the code was
+		# commented out in favor of just passing in the corpus word
+		# IDF mappings.
+
 		# Isolate any differences between the words in the list and the
 		# corpus words to IDF mapping (there should not be any if the
 		# code that initialized the corpus words to IDF mapping ran
 		# correctly).
-		print(f"Computing IDF for all words in {base_file}...")
-		local_difference = set(words)\
-			.difference(set(list(corpus_word_idfs.keys())))
-		
+		# local_difference = set(words)\
+		# 	.difference(set(list(corpus_word_idfs.keys())))
+		# 
 		# If a difference between the two was detected, get the missing
 		# word to IDF mappings and update the corpus dictionary.
-		if len(list(local_difference)) != 0:
-			word_idfs = compute_idf(
-				# w2d_data_files, corpus_size, words, args.use_json
-				w2d_data_files, corpus_size, local_difference, 
-				args.use_json
-			)
-			corpus_word_idfs.update(word_idfs)
-		
-		# NOTE:
-		# Isolating the subset of word IDFs is SLOW. It is taking
-		# minutes per file. Sending in the whole corpus word IDF
-		# mapping is possible but it causes memory overhead for each
-		# subprocess.
-
+		# if len(list(local_difference)) != 0:
+		# 	word_idfs = compute_idf(
+		# 		# w2d_data_files, corpus_size, words, args.use_json
+		# 		w2d_data_files, corpus_size, local_difference, 
+		# 		args.use_json
+		# 	)
+		# 	corpus_word_idfs.update(word_idfs)
+		# 
 		# Grab only a subset of the mappings from the corpus dictionary
 		# and pass that to the function that will compute the TF-IDF.
 		# word_idfs = {
 		# 	word: idf for word, idf in corpus_word_idfs.items()
 		# 	if word in words
 		# }
+
+		# Set the word IDF mapping to the corpus mapping.
 		word_idfs = corpus_word_idfs
 
 		print(f"Computing TF-IDF for all (document. word) pairs in {base_file}...")
 		if args.num_proc > 1:
 			# Determine the number of CPU cores to use (this will be
-			# passed down the the multiprocessing function)
+			# passed down the the multiprocessing function).
 			max_proc = min(mp.cpu_count(), args.num_proc)
+
 			tf_idf_data = multiprocess_metadata(
 				word_idfs, doc_to_words, num_proc=max_proc
 			)
 		else:
 			tf_idf_data = process_metadata(word_idfs, doc_to_words)
 
-		# exit()
+		exit()
 
 		# Write metadata to the respective files.
 		if len(list(tf_idf_data.keys())) > 0:
