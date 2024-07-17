@@ -501,7 +501,14 @@ def main():
 	# COMPUTE IDF
 	###################################################################
 
-	if len(idf_progress) == 0:
+	# Isolate the IDF files from the cache.
+	idf_files = [
+		os.path.join(idf_metadata_path, file) 
+		for file in os.listdir(idf_metadata_path)
+		if file.endswith(extension)
+	]
+
+	if len(idf_progress) == 0 or len(idf_files) == 0:
 		print("Processing IDF for all words in the corpus...")
 
 		# Compute the IDF for all words in the corpus.
@@ -544,13 +551,6 @@ def main():
 			with open(idf_progress_file, "w+") as pf:
 				pf.write("\n".join(idf_progress))
 	else:
-		# Isolate the IDF files from the cache.
-		idf_files = [
-			os.path.join(idf_metadata_path, file) 
-			for file in os.listdir(idf_metadata_path)
-			if file.endswith(extension)
-		]
-
 		# Load unique IDF for all words in the corpus from the cache.
 		corpus_word_idfs = dict()
 		for file in idf_files:
@@ -598,18 +598,18 @@ def main():
 		# code that initialized the corpus words to IDF mapping ran
 		# correctly).
 		print(f"Computing IDF for all words in {base_file}...")
-		local_difference = set(words)\
-			.difference(set(list(corpus_word_idfs.keys())))
+		# local_difference = set(words)\
+		# 	.difference(set(list(corpus_word_idfs.keys())))
 		
 		# If a difference between the two was detected, get the missing
 		# word to IDF mappings and update the corpus dictionary.
-		if len(list(local_difference)) != 0:
-			word_idfs = compute_idf(
-				# w2d_data_files, corpus_size, words, args.use_json
-				w2d_data_files, corpus_size, local_difference, 
-				args.use_json
-			)
-			corpus_word_idfs.update(word_idfs)
+		# if len(list(local_difference)) != 0:
+		# 	word_idfs = compute_idf(
+		# 		# w2d_data_files, corpus_size, words, args.use_json
+		# 		w2d_data_files, corpus_size, local_difference, 
+		# 		args.use_json
+		# 	)
+		# 	corpus_word_idfs.update(word_idfs)
 		
 		# Grab only a subset of the mappings from the corpus dictionary
 		# and pass that to the function that will compute the TF-IDF.
