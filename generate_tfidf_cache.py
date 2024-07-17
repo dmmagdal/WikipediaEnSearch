@@ -598,25 +598,32 @@ def main():
 		# code that initialized the corpus words to IDF mapping ran
 		# correctly).
 		print(f"Computing IDF for all words in {base_file}...")
-		# local_difference = set(words)\
-		# 	.difference(set(list(corpus_word_idfs.keys())))
+		local_difference = set(words)\
+			.difference(set(list(corpus_word_idfs.keys())))
 		
 		# If a difference between the two was detected, get the missing
 		# word to IDF mappings and update the corpus dictionary.
-		# if len(list(local_difference)) != 0:
-		# 	word_idfs = compute_idf(
-		# 		# w2d_data_files, corpus_size, words, args.use_json
-		# 		w2d_data_files, corpus_size, local_difference, 
-		# 		args.use_json
-		# 	)
-		# 	corpus_word_idfs.update(word_idfs)
+		if len(list(local_difference)) != 0:
+			word_idfs = compute_idf(
+				# w2d_data_files, corpus_size, words, args.use_json
+				w2d_data_files, corpus_size, local_difference, 
+				args.use_json
+			)
+			corpus_word_idfs.update(word_idfs)
 		
+		# NOTE:
+		# Isolating the subset of word IDFs is SLOW. It is taking
+		# minutes per file. Sending in the whole corpus word IDF
+		# mapping is possible but it causes memory overhead for each
+		# subprocess.
+
 		# Grab only a subset of the mappings from the corpus dictionary
 		# and pass that to the function that will compute the TF-IDF.
-		word_idfs = {
-			word: idf for word, idf in corpus_word_idfs.items()
-			if word in words
-		}
+		# word_idfs = {
+		# 	word: idf for word, idf in corpus_word_idfs.items()
+		# 	if word in words
+		# }
+		word_idfs = corpus_word_idfs
 
 		print(f"Computing TF-IDF for all (document. word) pairs in {base_file}...")
 		if args.num_proc > 1:
