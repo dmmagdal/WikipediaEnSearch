@@ -9,7 +9,6 @@
 
 
 import argparse
-# from argparse import Namespace
 import gc
 import hashlib
 import json
@@ -20,7 +19,6 @@ from typing import List, Dict
 
 import msgpack
 from tqdm import tqdm
-
 
 
 def load_data_from_msgpack(path: str) -> Dict:
@@ -202,7 +200,7 @@ def corpus_word_idf(w2d_data_files: List[str], corpus_size: int, use_json: bool 
 		msgpack. Default is False (msgpack).
 	@param: returns the Inverse Document Frequency for all words
 		in the corpus. The data is returned in a dictionary mapping 
-		each word to its IDF vale.
+		each word to its IDF value.
 	'''
 	# Initialize dictionary storing mapping of each unique word to
 	# its respective IDF.
@@ -233,6 +231,14 @@ def corpus_word_idf(w2d_data_files: List[str], corpus_size: int, use_json: bool 
 
 
 def merge_results(results):
+	'''
+	Merge the results of multprocessing together.
+	@param: results (List[Dict]), the list of TF-IDF metdata 
+		dictionaries returned by each instance of the main processing 
+		function.
+	@param: returns a dictionary containing the TF-IDF metadata for
+		every document/article in the file.
+	'''
 	# Initialize aggregate variable.
 	aggr_doc_to_word = dict()
 
@@ -251,7 +257,21 @@ def merge_results(results):
 	return aggr_doc_to_word
 
 
-def multiprocess_metadata(words_idf: Dict, doc_to_words: Dict, num_proc: int = 1):
+def multiprocess_metadata(words_idf: Dict[str, float], doc_to_words: Dict, num_proc: int = 1):
+	'''
+	Break the process of processing the metdata into multiple 
+		subprocesses and merge the results together to get the file's
+		TF-IDF metadata.
+	@param: words_idf (Dict[str, float]), the mapping of words to their
+		IDF values. It is assumed that all necessary words (words that 
+		appear in the file) are in this dictionary.
+	@param: doc_to_words (Dict), te mapping of all documents/articls to
+		their respective word frequency maps.
+	@param: num_proc (int), the number of processors to use. Default is
+		1.
+	@param: returns a dictionary containing the TF-IDF metadata for
+		every document/article in the file.
+	'''
 	# Break down the document to word mappings into chunks.
 	documents = list(doc_to_words.keys())
 	chunk_size = math.ceil(len(documents) / num_proc)
@@ -278,7 +298,17 @@ def multiprocess_metadata(words_idf: Dict, doc_to_words: Dict, num_proc: int = 1
 	return file_tfidf
 
 
-def process_metadata(words_idf: Dict, doc_to_words: Dict):
+def process_metadata(words_idf: Dict[str, float], doc_to_words: Dict):
+	'''
+	Processing the metdata to get the file's TF-IDF metadata.
+	@param: words_idf (Dict[str, float]), the mapping of words to their
+		IDF values. It is assumed that all necessary words (words that 
+		appear in the file) are in this dictionary.
+	@param: doc_to_words (Dict), te mapping of all documents/articls to
+		their respective word frequency maps.
+	@param: returns a dictionary containing the TF-IDF metadata for
+		every document/article in the file.
+	'''
 	# Initialize file TF-IDF metadata dictionary.
 	file_tfidf = dict()
 
@@ -317,7 +347,15 @@ def process_metadata(words_idf: Dict, doc_to_words: Dict):
 	return file_tfidf
 
 
-def main():
+def main() -> None:
+	'''
+	Main method. Process the word to document and document to word 
+		metadata from their respective files to create word to IDF and
+		document/article TF-IDF mappings for faster bag of words 
+		processing during classical search (TF-IDF, BM25).
+	@param: takes no arguments.
+	@return: returns nothing.
+	'''
 	###################################################################
 	# PROGRAM ARGUMENTS
 	###################################################################
@@ -559,7 +597,8 @@ def main():
 	###################################################################
 
 	# NOTE:
-	# Computing the corpus TF-IDF from start to finish takes around .
+	# Computing the corpus TF-IDF from start to finish takes around 2
+	# hours.
 
 	# Iterate through each file and preprocess it.
 	for idx in range(len(d2w_files)):
