@@ -495,6 +495,10 @@ def main():
 	# COMPUTE IDF
 	###################################################################
 
+	# NOTE:
+	# Computing the corpus IDF from start to finish takes around 6 to 9
+	# hours.
+
 	# Isolate the IDF files from the cache.
 	idf_files = [
 		os.path.join(idf_metadata_path, file) 
@@ -520,11 +524,6 @@ def main():
 			subset_idf = {
 				word: corpus_word_idfs[word] for word in subset_words
 			}
-
-			# First and last word in the subset are the identifiers
-			# for the file.
-			# first, last = subset_words[0], subset_words[-1]
-			# name = first + "-" + last
 
 			# NOTE:
 			# Using first and last word in the subset was a good idea
@@ -559,8 +558,11 @@ def main():
 	# COMPUTE TF & TF-IDF
 	###################################################################
 
+	# NOTE:
+	# Computing the corpus TF-IDF from start to finish takes around .
+
 	# Iterate through each file and preprocess it.
-	for idx in range(len(d2w_metadata_path)):
+	for idx in range(len(d2w_files)):
 		# Isolate the base files.
 		base_file = d2w_files[idx]
 		d2w_file = d2w_data_files[idx]
@@ -588,8 +590,6 @@ def main():
 		# Convert words set to a list.
 		words = sorted(list(words))
 
-		print(f"Computing IDF for all words in {base_file}...")
-
 		# NOTE:
 		# At the time/commit of writing this note, multiprocessing
 		# does not seem necessary. In fact, it is actually a lot 
@@ -611,6 +611,8 @@ def main():
 		# commented out in favor of just passing in the corpus word
 		# IDF mappings.
 
+		# print(f"Computing IDF for all words in {base_file}...")
+		#
 		# Isolate any differences between the words in the list and the
 		# corpus words to IDF mapping (there should not be any if the
 		# code that initialized the corpus words to IDF mapping ran
@@ -638,7 +640,7 @@ def main():
 		# Set the word IDF mapping to the corpus mapping.
 		word_idfs = corpus_word_idfs
 
-		print(f"Computing TF-IDF for all (document. word) pairs in {base_file}...")
+		print(f"Computing TF-IDF for all (document, word) pairs in {base_file}...")
 		if args.num_proc > 1:
 			# Determine the number of CPU cores to use (this will be
 			# passed down the the multiprocessing function).
