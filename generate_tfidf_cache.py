@@ -272,10 +272,10 @@ def multiprocess_metadata(words_idf: Dict, doc_to_words: Dict, num_proc: int = 1
 		results = pool.starmap(process_metadata, arg_list)
 
 		# Pass the aggregate results tuple to be merged.
-		file_idf= merge_results(results)
+		file_tfidf= merge_results(results)
 
 	# Return the different mappings.
-	return file_idf
+	return file_tfidf
 
 
 def process_metadata(words_idf: Dict, doc_to_words: Dict):
@@ -292,12 +292,15 @@ def process_metadata(words_idf: Dict, doc_to_words: Dict):
 		doc_len = sum([value for value in word_freq_map.values()])
 
 		# Iterate through the list of words.
-		for word in list(words_idf.keys()):
-			# Skip words that do not appear in the document (TF-IDF is 
-			# 0).
-			if word not in list(word_freq_map.keys()):
-				continue
+		# for word in list(words_idf.keys()):
+		# 	# Skip words that do not appear in the document (TF-IDF is 
+		# 	# 0).
+		# 	if word not in list(word_freq_map.keys()):
+		# 		continue
 
+		# Iterate through the list of words in the current document's
+		# word frequency mapping.
+		for word in list(word_freq_map.keys()):
 			# Compute the term frequency.
 			word_tf = word_freq_map[word] / doc_len
 
@@ -502,19 +505,19 @@ def main():
 		print("Processing IDF for all words in the corpus...")
 
 		# Compute the IDF for all words in the corpus.
-		word_idf = corpus_word_idf(
+		corpus_word_idfs = corpus_word_idf(
 			w2d_data_files, corpus_size, args.use_json
 		)
 
 		# Chunk the data and save it to file(s).
 		chunk_size = 5_000_000
-		words = sorted(list(word_idf.keys()))
+		words = sorted(list(corpus_word_idfs.keys()))
 		idx = 1
 		for i in range(0, len(words), chunk_size):
 			# Isolate the subset.
 			subset_words = words[i:i + chunk_size]
 			subset_idf = {
-				word: word_idf[word] for word in subset_words
+				word: corpus_word_idfs[word] for word in subset_words
 			}
 
 			# First and last word in the subset are the identifiers
@@ -540,6 +543,20 @@ def main():
 			idf_progress.append(subset_path)
 			with open(idf_progress_file, "w+") as pf:
 				pf.write("\n".join(idf_progress))
+	else:
+		# Isolate the IDF files from the cache.
+		idf_files = [
+			os.path.join(idf_metadata_path, file) 
+			for file in os.listdir(idf_metadata_path)
+			if file.endswith(extension)
+		]
+
+		# Load unique IDF for all words in the corpus from the cache.
+		corpus_word_idfs = dict()
+		for file in idf_files:
+			corpus_word_idfs.update(load_data_file(file, args.use_json))
+
+	assert corpus_word_idfs != None
 
 	# exit()
 
@@ -576,14 +593,32 @@ def main():
 		# Convert words set to a list.
 		words = sorted(list(words))
 
-		# Compute the IDF for all words.
+		# Isolate any differences between the words in the list and the
+		# corpus words to IDF mapping (there should not be any if the
+		# code that initialized the corpus words to IDF mapping ran
+		# correctly).
 		print(f"Computing IDF for all words in {base_file}...")
-		word_idfs = compute_idf(
-			w2d_data_files, corpus_size, words, args.use_json
-		)
+		local_difference = set(words)\
+			.difference(set(list(corpus_word_idfs.keys())))
+		
+		# If a difference between the two was detected, get the missing
+		# word to IDF mappings and update the corpus dictionary.
+		if len(list(local_difference)) != 0:
+			word_idfs = compute_idf(
+				# w2d_data_files, corpus_size, words, args.use_json
+				w2d_data_files, corpus_size, local_difference, 
+				args.use_json
+			)
+			corpus_word_idfs.update(word_idfs)
+		
+		# Grab only a subset of the mappings from the corpus dictionary
+		# and pass that to the function that will compute the TF-IDF.
+		word_idfs = {
+			word: idf for word, idf in corpus_word_idfs.items()
+			if word in words
+		}
 
 		print(f"Computing TF-IDF for all (document. word) pairs in {base_file}...")
-
 		if args.num_proc > 1:
 			# Determine the number of CPU cores to use (this will be
 			# passed down the the multiprocessing function)
@@ -594,17 +629,17 @@ def main():
 		else:
 			tf_idf_data = process_metadata(word_idfs, doc_to_words)
 
-		exit()
+		# exit()
 
 		# Write metadata to the respective files.
-		# if len(list(tf_idf_data.keys())) > 0:
-		# 	path = os.path.join(cache_metadata_path, base_file)
-		# 	write_data_file(path, tf_idf_data, args.use_json)
+		if len(list(tf_idf_data.keys())) > 0:
+			path = os.path.join(tfidf_metadata_path, base_file)
+			write_data_file(path, tf_idf_data, args.use_json)
 
 		# Update progress files as necessary.
-		# progress.append(base_file)
-		# with open(progress_file, "w+") as pf:
-		# 	pf.write("\n".join(progress))
+		progress.append(base_file)
+		with open(progress_file, "w+") as pf:
+			pf.write("\n".join(progress))
 
 		# Perform garbage collection.
 		gc.collect()
