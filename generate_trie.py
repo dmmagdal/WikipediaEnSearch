@@ -314,7 +314,7 @@ def explore_data() -> None:
 
 	# Build Trie.
 	single_trie = Trie()
-	for word in words:
+	for word in tqdm(words):
 		single_trie.insert(word)
 	
 	# Write Trie to file.
