@@ -5,7 +5,9 @@
 # Windows/MacOS/Linux
 
 
+import argparse
 from collections import defaultdict
+import gc
 import json
 import os
 from typing import List, Dict
@@ -22,7 +24,7 @@ class TrieNode:
 	
 
 class Trie:
-	def __init__(self,) -> None:
+	def __init__(self) -> None:
 		# Initialize root node of the tree.
 		self.root = TrieNode()
 
@@ -283,9 +285,53 @@ def write_data_file(path: str, data: Dict, use_json: bool = False) -> None:
 		write_data_to_msgpack(path, data)
 
 
+def explore_data() -> None:
+	# Load config.
+	with open("config.json", "r") as f:
+		config = json.load(f)
+
+	# IDF path.
+	idf_path = config["preprocessing"]["idf_cache_path"]
+	extension = ".msgpack"
+
+	# IDF files.
+	idf_files = [
+		os.path.join(idf_path, file) 
+		for file in os.listdir(idf_path)
+		if file.endswith(extension)
+	]
+
+	# Load IDF data.
+	word_idf = dict()
+	for file in idf_files:
+		idf_data = load_data_file(file, False)
+		word_idf.update(idf_data)
+
+	# Isolate the words.
+	words = list(word_idf.keys())
+	del word_idf
+	gc.collect()
+
+	# Build Trie.
+	single_trie = Trie()
+	for word in words:
+		single_trie.insert(word)
+	
+	# Write Trie to file.
+	trie_dict = serialize_trie_node(single_trie)
+	write_data_file("./test.msgpack", trie_dict, False)
+
+	# Size of trie with just words (no documents list):
+
+	pass
+
+
 def main():
+	explore_data()
+
 	# Initialize a dictionary with a tree for every starting character 
 	# possible.
+	
 
 	# Iterate through all document to word files and insert the unique 
 	# (document, word) pair into the respective trie.
