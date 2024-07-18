@@ -312,14 +312,40 @@ def explore_data() -> None:
 	del word_idf
 	gc.collect()
 
+	starting_chars = sorted(list(set([word[0] for word in words])))
+
+
+	for char in starting_chars:
+		select_words = [
+			word for word in words if word.startswith(char)
+		]
+
+		trie = Trie()
+		print(f"Build Trie starting with {char}")
+		for word in tqdm(select_words):
+			trie.insert(word)
+
+		# Write Trie to file.
+		trie_path = "./test_" + starting_chars.index(char) + ".msgpack"
+		trie_dict = serialize_trie_node(trie)
+		write_data_file(trie_path, trie_dict, False)
+
+		
 	# Build Trie.
-	single_trie = Trie()
-	for word in words:
-		single_trie.insert(word)
+	# single_trie = Trie()
+	# for word in words:
+	# 	single_trie.insert(word)
 	
 	# Write Trie to file.
-	trie_dict = serialize_trie_node(single_trie)
-	write_data_file("./test.msgpack", trie_dict, False)
+	# trie_dict = serialize_trie_node(single_trie)
+	# write_data_file("./test.msgpack", trie_dict, False)
+
+	# NOTE:
+	# Notes on running this experiment.
+	# - Server OOMed (with 67 GB of RAM) when building the single trie 
+	#	with all words at around 20,000,000 words (roughly half of
+	#	corpus vocab). Shows that we need to immediately separate and
+	#	build tries based on their starting character.
 
 	# Size of trie with just words (no documents list):
 
