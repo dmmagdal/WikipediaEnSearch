@@ -16,6 +16,117 @@ from typing import List, Dict, Any, Set
 
 import msgpack
 from tqdm import tqdm
+
+
+class TrieNode:
+	def __init__(self, text="") -> None:
+		self.text = text
+		self.children = dict()
+		self.is_word = False
+		self.document_ids = set()
+	
+
+class Trie:
+	def __init__(self) -> None:
+		# Initialize root node of the tree.
+		self.root = TrieNode()
+
+
+	def insert(self, word):
+		# Set pointer to the root of the tree.
+		current = self.root
+
+		# Iterate through each character of the word.
+		for i, char in enumerate(word):
+			# If the character of the word, isolate the prefix (slice
+			# the word up to the current character) and create a new
+			# node with that prefix and insert it to the child under
+			# the current node's dictionary.
+			if char not in current.children:
+				prefix = word[0:i + 1]
+				current.children[char] = TrieNode(prefix)
+
+			# Move the pointer to the child node.
+			current = current.children[char]
+
+		# Set the current pointer to have the current node as a word.
+		current.is_word = True
+
+
+	def find(self, word):
+		# Set pointer to the root of the tree.
+		current = self.root
+
+		# Iterate through each character in the word.
+		for char in word:
+			# If the character was not in the pointer node's 
+			# dictionary, return None.
+			if char not in current.children:
+				return None
+			
+			# Set the current pointer to the child node of the next
+			# character in the word in the dictionary.
+			current = current.children[char]
+
+		# If the current pointer node is indicative of a word, return
+		# the current node.
+		if current.is_word:
+			return current
+		
+		# Return None if the current pointer was not indicative of a
+		# word.
+		return None
+
+
+	def starts_with(self, prefix):
+		# NOTE:
+		# This function is not needed for the purposes of this project.
+		# This is for searching for a list of possible words given a 
+		# prefix text.
+
+		# Initialize word list and set pointer to the root.
+		words = list()
+		current = self.root
+
+		# Iterate through the character in the prefix.
+		for char in prefix:
+			# If the character is not in the pointer children, return
+			# an empty list.
+			if char not in current.children:
+				# Could also just return words since it's empty by default
+				return list()
+			
+			# Set the pointer to the child node.
+			current = current.children[char]
+
+		self.__child_words_for(current, words)
+		return words
+
+
+	def __child_words_for(self, node, words):
+		'''
+		Private helper function. Cycles through all children
+		of node recursively, adding them to words if they
+		constitute whole words (as opposed to merely prefixes).
+		'''
+		if node.is_word:
+			words.append(node.text)
+
+		for letter in node.children:
+			self.__child_words_for(node.children[letter], words)
+
+
+
+	def size(self):
+		# By default, get the size of the whole trie, starting at the root
+		if not current:
+			current = self.root
+
+		count = 1
+		for letter in current.children:
+			count += self.size(current.children[letter])
+		
+		return count
 	
 
 class TrieNodeGPT:
