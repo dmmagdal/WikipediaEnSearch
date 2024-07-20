@@ -6,11 +6,13 @@
 
 
 import copy
+import gc
 import hashlib
 import heapq
 import json
 import math
 import os
+import string
 from typing import List, Dict, Tuple
 
 from bs4 import BeautifulSoup
@@ -25,6 +27,7 @@ from tqdm import tqdm
 
 from preprocess import load_model, process_page
 from preprocess import bow_preprocessing, vector_preprocessing
+from generate_trie import load_trie
 
 
 def hashSum(data: str) -> str:
@@ -181,7 +184,7 @@ def print_results(results: List, search_type: str = "tf-idf") -> None:
 
 
 class BagOfWords: 
-	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
+	def __init__(self, bow_dir: str, corpus_size: int = -1, srt: float=-1.0, use_json=False) -> None:
 		'''
 		Initialize a Bag-of-Words search object.
 		@param: bow_dir (str), a path to the directory containing the 
@@ -198,10 +201,15 @@ class BagOfWords:
 		self.doc_to_word_folder = None
 		self.word_to_doc_files = None
 		self.doc_to_word_files = None
-		self.corpus_size = 0	# total number of documents (articles)
-		self.srt = srt			# similarity relative threshold value
+		self.idf_files = None
+		self.trie_files = None
+		self.int_to_doc_file = None
+		self.corpus_size = corpus_size	# total number of documents (articles)
+		self.srt = srt					# similarity relative threshold value
 		self.use_json = use_json
 		self.extension = ".json" if use_json else ".msgpack"
+		self.alpha_numerics = string.digits + string.ascii_lowercase
+		self.word_len_limit = 60
 
 		# Initialize mapping folder path and files list.
 		self.locate_and_validate_documents(bow_dir)
@@ -210,13 +218,16 @@ class BagOfWords:
 		# by default are no longer None.
 		initialized_variables = [
 			self.word_to_doc_folder, self.doc_to_word_folder,
-			self.word_to_doc_files, self.doc_to_word_files
+			self.word_to_doc_files, self.doc_to_word_files,
+			self.idf_files, self.trie_files, self.int_to_doc_file
 		]
 		assert None not in initialized_variables,\
 			"Some variables were not initialized properly"
 		
-		# Initialize the corpus size.
-		self.corpus_size = self.get_number_of_documents()
+		# Computethe corpus size if the default value for the argument 
+		# is detected.
+		if self.corpus_size == -1:
+			self.corpus_size = self.get_number_of_documents()
 
 		# Verify that the corpus size is not 0.
 		assert self.corpus_size != 0,\
@@ -244,6 +255,12 @@ class BagOfWords:
 		self.word_to_doc_folder = os.path.join(bow_dir, 'word_to_docs')
 		self.doc_to_word_folder = os.path.join(bow_dir, 'doc_to_words')
 
+		# Initialize path to word to idf and trie folders (trie folder
+		# contains document id to document mapping as well).
+		self.idf_folder = os.path.join(bow_dir, "idf_cache")
+		self.trie_folder = os.path.join(bow_dir, "trie_cache")
+
+
 		# Verify that the paths exist.
 		assert os.path.exists(self.word_to_doc_folder) and os.path.isdir(self.word_to_doc_folder),\
 			f"Expected path to word to documents folder to exist: {self.word_to_doc_folder}"
@@ -261,13 +278,39 @@ class BagOfWords:
 			for file in os.listdir(self.doc_to_word_folder)
 			if file.endswith(self.extension)
 		]
+
+		# Initialize path to word to idf mappings, trie files, and 
+		# document id to document mappings.
+		doc_id_map_files = [
+			"doc_to_int" + self.extension,
+			"int_to_doc" + self.extension
+		]
+		self.idf_files = [
+			os.path.join(self.idf_folder, file)
+			for file in os.listdir(self.idf_folder)
+			if file.endswith(self.extension)
+		]
+		self.trie_files = [
+			os.path.join(self.trie_folder, file)
+			for file in os.listdir(self.trie_folder)
+			if file.endswith(self.extension) and file not in doc_id_map_files
+		]
+		self.int_to_doc_file = os.path.join(
+			self.trie_folder, doc_id_map_files[1]
+		)
 		
 		# Verify that the list of files for each mapping folder is not
 		# empty.
 		assert len(self.word_to_doc_files) != 0,\
-			f"Detected word to documents folder {self.word_to_doc_folder} to have not supported files"
+			f"Detected word to documents folder {self.word_to_doc_folder} does have not supported files"
 		assert len(self.word_to_doc_files) != 0,\
-			f"Detected document to words folder {self.doc_to_word_folder} to have not supported files"
+			f"Detected document to words folder {self.doc_to_word_folder} does have not supported files"
+		assert len(self.idf_files) != 0,\
+			f"Detected word to idf folder {self.idf_folder} does have not supported files"
+		assert len(self.trie_files) != 0,\
+			f"Detected document to words folder {self.trie_folder} does have not supported files"
+		assert os.path.exists(self.int_to_doc_file),\
+			f"Required document id to document file in {self.trie_folder} does exist"
 		
 
 	def get_number_of_documents(self) -> int:
@@ -289,6 +332,94 @@ class BagOfWords:
 		
 		# Return the count.
 		return counter
+	
+
+	def get_documents_from_trie(self, words: List[str]) -> List[str]:
+		# Initialize a dictionary to group words together by their
+		# first character.
+		char_word_dict = dict()
+
+		# Load the document id to documents mappings.
+		int_to_doc = load_data_file(
+			self.int_to_doc_file, self.use_json
+		)
+
+		# Iterate through each word in the query words list.
+		for word in words:
+			# Isolate the first character in the word.
+			word_char = words[0]
+
+			# Verify that the word is within the set word length limit.
+			# Will skip the word otherwise.
+			if len(word) <= self.word_len_limit:
+				# Store the word to the character to word dictionary.
+				if word_char in list(char_word_dict.keys()):
+					char_word_dict[word_char].append(word)
+				else:
+					char_word_dict[word_char] = [word]
+
+		# Initialize the set of documents that will be returned. Each
+		# item in the list will be a unique string.
+		documents = set()
+
+		# Iterate through the characters in the character to word
+		# dictionary.
+		for char in list(char_word_dict.keys()):
+			# Reset the char variable if it is not an alphanumeric.
+			if char not in self.alpha_numerics:
+				char = "other"
+
+			# Unpack the words in the character to words dictionary.
+			char_words = char_word_dict[char]
+			
+			# Use the character to determine the filepath of the trie.
+			file_base = char + "_trie" + self.extension
+			filepath = os.path.join(self.trie_folder, file_base)
+
+			# Verify that the filepath exists in the list.
+			assert filepath in self.trie_files
+
+			# Load the trie.
+			trie = load_trie(filepath, self.use_json)
+
+			# Search for the document ids for each word in the trie.
+			for word in char_words:
+				results = trie.search(word)
+
+				# If the results returned are not None, take the 
+				# results and add them to the return documents set
+				# (make sure to convert from document ids to 
+				# documents).
+				if results is not None:
+					documents.update([
+						int_to_doc[result] for result in results
+					])
+
+		# Convert the documents set to a list and return it.
+		return list(documents)
+	
+
+	def get_document_paths_from_documents(self, documents: List[str]):
+
+		file_article_dict = dict()
+
+		basenames = [
+			(os.path.dirname(doc), os.path.basename(doc))
+			for doc in documents
+		]
+
+		for folder, name in basenames:
+			file_basename, article_hash = name.split(".xml")
+			file_basename += ".xml"
+			# file = os.path.join(folder, file_basename)
+			file = file_basename
+
+			if file in list(file_article_dict.keys()):
+				file_article_dict[file].append(article_hash)
+			else:
+				file_article_dict[file] = [article_hash]
+
+		return file_article_dict
 	
 
 	def compute_tf(self, doc_word_freq: Dict, words: List[str]) -> List[float]:
@@ -327,8 +458,8 @@ class BagOfWords:
 
 	def compute_idf(self, words: List[str]) -> List[float]:
 		'''
-		Compute the Inverse Document Frquency of the given set of 
-			(usually query) words.
+		Retrieve the precomputed Inverse Document Frquency of the given
+		 	set of (usually query) words.
 		@param: words (List[str]), the (ordered) list of all (unique) 
 			terms to compute the Inverse Document Frequency for.
 		@param: returns the Inverse Document Frequency for all words
@@ -339,26 +470,45 @@ class BagOfWords:
 		'''
 		# Initialize a list containing the mappings of the query words
 		# to the total count of how many articles each appears in.
-		word_count = [0.0] * len(words)
+		# word_count = [0.0] * len(words)
+		# 
+		# Iterate through each file.
+		# for file in tqdm(self.word_to_doc_files):
+		# 	# Load the word to doc mappings from file.
+		# 	word_to_docs = load_data_file(file, use_json=self.use_json)
+		# 
+		# 	# Iterate through each word. Update the total count for
+		# 	# each respective word if applicable.
+		# 	for word_idx in range(len(words)):
+		# 		word = words[word_idx]
+		# 		if word in word_to_docs:
+		# 			word_count[word_idx] += word_to_docs[word]
+		# 
+		# Compute inverse document frequency for each term.
+		# return [
+		# 	math.log(self.corpus_size / word_count[word_idx])
+		# 	if word_count[word_idx] != 0.0 else 0.0
+		# 	for word_idx in range(len(words))
+		# ]
+
+		# Initialize a list containing the mappings of the query words
+		# to the IDF.
+		idf_vector = [0.0] * len(words)
 
 		# Iterate through each file.
-		for file in tqdm(self.word_to_doc_files):
-			# Load the word to doc mappings from file.
-			word_to_docs = load_data_file(file, use_json=self.use_json)
+		for file in self.idf_files:
+			# Load the word to IDF mappings from file.
+			word_to_idf = load_data_file(file, use_json=self.use_json)
 
-			# Iterate through each word. Update the total count for
-			# each respective word if applicable.
+			# Iterate through each word and retrieve the IDF value for
+			# that word if it is available.
 			for word_idx in range(len(words)):
 				word = words[word_idx]
-				if word in word_to_docs:
-					word_count[word_idx] += word_to_docs[word]
+				if word in word_to_idf:
+					idf_vector[word_idx] = word_to_idf[word]
 
-		# Compute inverse document frequency for each term.
-		return [
-			math.log(self.corpus_size / word_count[word_idx])
-			if word_count[word_idx] != 0.0 else 0.0
-			for word_idx in range(len(words))
-		]
+		# Return the inverse document frequency vector.
+		return idf_vector
 
 
 class TF_IDF(BagOfWords):
@@ -385,12 +535,15 @@ class TF_IDF(BagOfWords):
 		# Preprocess the search query to a bag of words.
 		words, word_freq = bow_preprocessing(query, True)
 
+		# Isolate a list of files/documents to look through.
+		target_documents = self.get_documents_from_trie(words)
+
 		# Compute the TF-IDF for the corpus.
 		# _, corpus_tfidf = self.compute_tfidf(
 		# 	words, word_freq, max_results=max_results
 		# )
 		corpus_tfidf = self.compute_tfidf(
-			words, word_freq, max_results=max_results
+			words, word_freq, target_documents, max_results=max_results
 		)
 
 		# The corpus TF-IDF results are stored in a max heap. Convert
@@ -422,7 +575,7 @@ class TF_IDF(BagOfWords):
 		return sorted_rankings
 	
 
-	def compute_tfidf(self, words: List[str], query_word_freq: Dict, max_results: int = -1):
+	def compute_tfidf(self, words: List[str], query_word_freq: Dict, documents: List[str], max_results: int = -1):
 		'''
 		Iterate through all the documents in the corpus and compute the
 			TF-IDF for each document in the corpus. Sort the results
@@ -432,6 +585,8 @@ class TF_IDF(BagOfWords):
 			terms to compute the Inverse Document Frequency for.
 		@param: query_word_freq (Dict), the word frequency mapping for 
 			the input search query.
+		@param: documents (List[str]), the list of files/documents that
+			will be queried from the corpus.
 		@param: max_results (int), the maximum number of results to 
 			return. Default is -1 (no limit).
 		@return: returns the sorted list of search results. 
@@ -457,6 +612,17 @@ class TF_IDF(BagOfWords):
 		# Compute corpus TF-IDF.
 		corpus_tfidf_heap = []
 
+		# Given the documents, get a filtered list of documents to use 
+		# from doc_to_word_files.
+		file_to_article = self.get_document_paths_from_documents(
+			documents
+		)
+		filtered_files = [
+			file 
+			for file in self.doc_to_word_files
+			if os.path.basename(file) in list(file_to_article.keys())
+		]
+
 		# NOTE:
 		# Heapq in use is a max-heap. This is implemented by 
 		# multiplying the cosine similarity score by -1. That way, the
@@ -464,12 +630,15 @@ class TF_IDF(BagOfWords):
 		# popped when we need to pushpop the largest scoring tuple.
 
 		# Compute TF-IDF for every file.
-		for file in tqdm(self.doc_to_word_files):
+		# for file in tqdm(self.doc_to_word_files):
+		for file in tqdm(filtered_files):
 			# Load the doc to word frequency mappings from file.
 			doc_to_words = load_data_file(file, self.use_json)
 
 			# Iterate through each document.
-			for doc in doc_to_words:
+			# for doc in doc_to_words:
+			# Iterate through the documents provided from arguments.
+			for doc in documents:
 				# Extract the document word frequencies.
 				word_freq_map = doc_to_words[doc]
 
@@ -594,8 +763,13 @@ class BM25(BagOfWords):
 		# Preprocess the search query to a bag of words.
 		words = bow_preprocessing(query, False)
 
+		# Isolate a list of files/documents to look through.
+		target_documents = self.get_documents_from_trie(words)
+
 		# Compute the BM25 for the corpus.
-		corpus_bm25 = self.compute_bm25(words, max_results=max_results)
+		corpus_bm25 = self.compute_bm25(
+			words, target_documents, max_results=max_results
+		)
 
 		# The corpus TF-IDF results are stored in a max heap. Convert
 		# the structure back to a list sorted from largest to smallest 
@@ -622,7 +796,7 @@ class BM25(BagOfWords):
 		return sorted_rankings
 
 
-	def compute_bm25(self, words: List[str], max_results: int = -1):
+	def compute_bm25(self, words: List[str], documents: List[str], max_results: int = -1):
 		'''
 		Iterate through all the documents in the corpus and compute the
 			BM25 for each document in the corpus. Sort the results
@@ -632,6 +806,8 @@ class BM25(BagOfWords):
 			terms to compute the Inverse Document Frequency for.
 		@param: query_word_freq (Dict), the word frequency mapping for 
 			the input search query.
+		@param: documents (List[str]), the list of files/documents that
+			will be queried from the corpus.
 		@param: max_results (int), the maximum number of results to 
 			return. Default is -1 (no limit).
 		@return: returns the BM25 for the query as well as the sorted
@@ -648,6 +824,17 @@ class BM25(BagOfWords):
 		# Compute corpus BM25.
 		corpus_bm25_heap = []
 
+		# Given the documents, get a filtered list of documents to use 
+		# from doc_to_word_files.
+		file_to_article = self.get_document_paths_from_documents(
+			documents
+		)
+		filtered_files = [
+			file 
+			for file in self.doc_to_word_files
+			if os.path.basename(file) in list(file_to_article.keys())
+		]
+
 		# NOTE:
 		# Heapq in use is a max-heap. In this case, we don't want to 
 		# multiply the BM25 score by -1 because a larger score means a
@@ -657,12 +844,14 @@ class BM25(BagOfWords):
 		# the term values into a sum for the document score.
 
 		# Compute BM25 for every file.
-		for file in tqdm(self.doc_to_word_files):
+		# for file in tqdm(self.doc_to_word_files):
+		for file in filtered_files:
 			# Load the doc to word frequency mappings from file.
 			doc_to_words = load_data_file(file, self.use_json)
 
 			# Iterate through each document.
-			for doc in doc_to_words:
+			# for doc in doc_to_words:
+			for doc in documents:
 				# Initialize the BM25 score for the document.
 				bm25_score = 0.0
 
