@@ -10,8 +10,8 @@ import gc
 import json
 import os
 import string
-from typing import List, Dict
-import unicodedata
+from typing import List, Dict, Any, Set
+# import unicodedata
 
 import msgpack
 from tqdm import tqdm
@@ -134,13 +134,30 @@ class TrieNodeGPT:
 		self.document_ids = set()
 
 
+	def __eq__(self, other):
+		if not isinstance(other, TrieNodeGPT):
+			return False
+
+		# Check if children and document_ids are equal
+		return (self.children == other.children and
+				self.document_ids == other.document_ids)
+
+
 class TrieGPT:
 	def __init__(self):
 		# Initialize a root node.
 		self.root = TrieNodeGPT()
-	
 
-	def insert(self, word, document_id):
+
+	def __eq__(self, other: Any) -> bool:
+		if not isinstance(other, TrieGPT):
+			return False
+		
+		# Check if the roots of both tries are equal
+		return self.root == other.root
+
+
+	def insert(self, word: str, document_id: int) -> None:
 		# Set the pointer to the root of the tree.
 		node = self.root
 
@@ -160,7 +177,7 @@ class TrieGPT:
 		# node.document_ids.update(document_id)
 	
 
-	def search(self, word):
+	def search(self, word: str) -> Set[int] | None:
 		# Set the pointer to the root of the tree.
 		node = self.root
 
@@ -179,7 +196,7 @@ class TrieGPT:
 	
 
 # Save trie structure (simplified example, might need custom serialization)
-def serialize_trie_node(node: TrieNodeGPT):
+def serialize_trie_node(node: TrieNodeGPT) -> Dict:
     return {
         'children': {char: serialize_trie_node(child) for char, child in node.children.items()},
         'document_ids': list(node.document_ids)
@@ -187,7 +204,7 @@ def serialize_trie_node(node: TrieNodeGPT):
 
 
 # Load trie structure
-def deserialize_trie_node(data: Dict):
+def deserialize_trie_node(data: Dict) -> TrieNodeGPT:
     node = TrieNodeGPT()
     node.document_ids = set(data['document_ids'])
     node.children = {char: deserialize_trie_node(child) for char, child in data['children'].items()}
@@ -303,154 +320,22 @@ def index_documents_as_ints(doc_to_word_files: List[str], use_json: bool = False
 	return doc_to_int
 
 
-def explore_data() -> None:
-	# Load config.
-	with open("config.json", "r") as f:
-		config = json.load(f)
-
-	# IDF path.
-	idf_path = config["preprocessing"]["idf_cache_path"]
-	d2w_path = config["preprocessing"]["doc_to_words_path"]
-	extension = ".msgpack"
-
-	# Doc2Word files.
-	d2w_files = sorted([
-		os.path.join(d2w_path, file) 
-		for file in os.listdir(d2w_path)
-		if file.endswith(extension)
-	])
-
-	# IDF files.
-	idf_files = [
-		os.path.join(idf_path, file) 
-		for file in os.listdir(idf_path)
-		if file.endswith(extension)
-	]
-
-	# Load IDF data.
-	word_idf = dict()
-	for file in idf_files:
-		idf_data = load_data_file(file, False)
-		word_idf.update(idf_data)
-
-	# Isolate the words.
-	words = list(word_idf.keys())
-	del word_idf
-	gc.collect()
-
-	starting_chars = sorted(list(set([word[0] for word in words])))
-	print(f"Detected {len(starting_chars)} unique starting characters in the corpus.")
-
-	# Set character limit to eliminate ridiculously long strings that 
-	# are probably not actual english words. Should help counter max-
-	# recursion limit error too.
-	limit = 60 # Limit was determined based on longest word in English language at 45 characters (Google'd it) but I allowed for some extra space.
-
-	# exit()
-
-	digit_count = 0
-	alpha_count = 0
-	print(f"Number of total words: {len(words)}")
-
-	starting_chars = string.digits + string.ascii_lowercase + string.ascii_uppercase
-	for char in tqdm(starting_chars):
-		select_words = [
-			word for word in words 
-			if word.startswith(char) and len(word) < limit
-		]
-		if char.isdigit():
-			digit_count += len(select_words)
-		elif char.isalpha():
-			alpha_count += len(select_words)
-		else:
-			continue
+def save_trie(trie: TrieGPT, path: str, use_json: bool = False) -> None:
+	# Save the trie.
+	trie_dict = serialize_trie_node(trie.root)
+	write_data_file(path, trie_dict, use_json)
 
 
-	print(f"Number of digit words: {digit_count}")
-	print(f"Number of alpha words: {alpha_count}")
-
-	# exit()
-
-
-	for char in starting_chars:
-		if unicodedata.category(char) == "Cc":
-			continue
-
-		print(f"Starting char: {char}")
-		select_words = [
-			word for word in words 
-			if word.startswith(char) and len(word) < limit
-		]
-		print(f"Number of words: {len(select_words)}")
-		print(f"Category: {unicodedata.category(char)}")
-		try: 
-			print(f"Name: {unicodedata.name(char)}")
-		except Exception as e:
-			pass
-		
-		trie_path = "./test_" + str(starting_chars.index(char)) + ".msgpack"
-		if os.path.exists(trie_path):
-			continue
-
-		select_words = [
-			word for word in words 
-			if word.startswith(char) and len(word) < limit
-		]
-
-		trie = Trie()
-		print(f"Build Trie starting with {char}")
-		print(f"Number of words to store in trie: {len(select_words)}")
-		for word in tqdm(select_words):
-			trie.insert(word)
-
-		# Write Trie to file.
-		trie_dict = serialize_trie_node(trie.root)
-		write_data_file(trie_path, trie_dict, False)
-
-	# Build Trie.
-	# single_trie = Trie()
-	# for word in words:
-	# 	single_trie.insert(word)
-	
-	# Write Trie to file.
-	# trie_dict = serialize_trie_node(single_trie)
-	# write_data_file("./test.msgpack", trie_dict, False)
-
-	# NOTE:
-	# Unicodedata references: 
-	# https://www.fileformat.info/info/unicode/category/index.htm
-	# https://docs.python.org/3.10/library/unicodedata.html
-	# https://www.ssec.wisc.edu/~tomw/java/unicode.html
-
-	# NOTE:
-	# Notes on running this experiment.
-	# - Server OOMed (with 67 GB of RAM) when building the single trie 
-	#	with all words at around 20,000,000 words (roughly half of
-	#	corpus vocab). Shows that we have to initialize and build each
-	#   trie for each starting character individually.
-	# - Giving each starting character its own trie would create around
-	#   21,000 files. But when checking the basic English 
-	#   alphanumerical characters, they have roughly 88% coverage of 
-	#   all words in the corpus, leaving only around 5 million words
-	#   unaccounted for. For this reason, Each english alphanumerical
-	#   character will get its own trie (and file) and the rest will be
-	#   put in a separate trie.
-	# - It takes around 15 minutes on server to build mapping of 
-	#	documents to their document ids.
-	# - It takes around 25 to 30 minutes on server to build and save a 
-	#   trie for each alphanumerical starting character.
-	# - RAM overhead is around 35GB for just a single trie so using
-	#   multprocessing (even on the server) is not advised without 
-	#   sufficient memory resources.
-
-	# Size of trie with just words (no documents list):
-
-	pass
+def load_trie(path: str, use_json: bool = False) -> TrieGPT:
+	# Load the trie.
+	trie = TrieGPT()
+	trie_data = load_data_file(path, use_json)
+	trie.root = deserialize_trie_node(trie_data)
 
 
 def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict) -> TrieGPT:
-	# List of all alphanumerics.
-	alpha_numerics = string.digits + string.ascii_lowercase + string.ascii_uppercase
+	# List of all common english alphanumerics.
+	alpha_numerics = string.digits + string.ascii_lowercase
 
 	# Initialize the trie for the character group.
 	char_trie = TrieGPT()
@@ -510,6 +395,99 @@ def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict) ->
 	return char_trie
 
 
+def explore_data() -> None:
+	# Load config.
+	with open("config.json", "r") as f:
+		config = json.load(f)
+
+	# IDF path.
+	idf_path = config["preprocessing"]["idf_cache_path"]
+	extension = ".msgpack"
+
+	# IDF files.
+	idf_files = [
+		os.path.join(idf_path, file) 
+		for file in os.listdir(idf_path)
+		if file.endswith(extension)
+	]
+
+	# Load IDF data.
+	word_idf = dict()
+	for file in idf_files:
+		idf_data = load_data_file(file, False)
+		word_idf.update(idf_data)
+
+	# Isolate the words.
+	words = list(word_idf.keys())
+	del word_idf
+	gc.collect()
+
+	starting_chars = sorted(list(set([word[0] for word in words])))
+	print(f"Detected {len(starting_chars)} unique starting characters in the corpus.")
+
+	# Set character limit to eliminate ridiculously long strings that 
+	# are probably not actual english words. Should help counter max-
+	# recursion limit error too.
+	limit = 60 # Limit was determined based on longest word in English language at 45 characters (Google'd it) but I allowed for some extra space.
+
+	digit_count = 0
+	alpha_count = 0
+	print(f"Number of total words: {len(words)}")
+
+	# NOTE:
+	# Given that our text preprocessing lowercased all words, there 
+	# should be no uppercase english alphabetical characters (covered
+	# by string.ascii_uppercase). We confirmed this by checking the 
+	# number of characters starting with ascii_letters including and
+	# without the uppercase characters. Including uppercase characters
+	# had no affect, hence the confirmation.
+
+	starting_chars = string.digits + string.ascii_lowercase #+ string.ascii_uppercase
+	for char in tqdm(starting_chars):
+		select_words = [
+			word for word in words 
+			if word.startswith(char) and len(word) < limit
+		]
+		if char.isdigit():
+			digit_count += len(select_words)
+		elif char.isalpha():
+			alpha_count += len(select_words)
+		else:
+			continue
+
+	print(f"Number of digit words: {digit_count}")
+	print(f"Number of alpha words (lowercase & uppercase): {alpha_count}")
+
+	# NOTE:
+	# Unicodedata references: 
+	# https://www.fileformat.info/info/unicode/category/index.htm
+	# https://docs.python.org/3.10/library/unicodedata.html
+	# https://www.ssec.wisc.edu/~tomw/java/unicode.html
+
+	# NOTE:
+	# Notes on running this experiment.
+	# - Server OOMed (with 67 GB of RAM) when building the single trie 
+	#	with all words at around 20,000,000 words (roughly half of
+	#	corpus vocab). Shows that we have to initialize and build each
+	#   trie for each starting character individually.
+	# - Giving each starting character its own trie would create around
+	#   21,000 files. But when checking the basic English 
+	#   alphanumerical characters, they have roughly 88% coverage of 
+	#   all words in the corpus, leaving only around 5 million words
+	#   unaccounted for. For this reason, Each english alphanumerical
+	#   character will get its own trie (and file) and the rest will be
+	#   put in a separate trie.
+	# - It takes around 15 minutes on server to build mapping of 
+	#	documents to their document ids.
+	# - It takes around 25 to 30 minutes on server to build and save a 
+	#   trie for each alphanumerical starting character.
+	# - RAM overhead is around 35GB for just a single trie so using
+	#   multprocessing (even on the server) is not advised without 
+	#   sufficient memory resources.
+
+	return
+
+
 def main():
 	'''
 	Main method. Process the word to document and document to word 
@@ -523,23 +501,35 @@ def main():
 	# PROGRAM ARGUMENTS
 	###################################################################
 	parser = argparse.ArgumentParser()
-	parser.add_argument(
-		"--restart",
-		action="store_true",
-		help="Specify whether to restart the preprocessing from scratch. Default is false/not specified."
-	)
-	parser.add_argument(
-		'--num_proc', 
-		type=int, 
-		default=1, 
-		help="Number of processor cores to use for multiprocessing. Default is 1."
-	)
+	# parser.add_argument(
+	# 	"--restart",
+	# 	action="store_true",
+	# 	help="Specify whether to restart the preprocessing from scratch. Default is false/not specified."
+	# )
+	# parser.add_argument(
+	# 	'--num_proc', 
+	# 	type=int, 
+	# 	default=1, 
+	# 	help="Number of processor cores to use for multiprocessing. Default is 1."
+	# )
 	parser.add_argument(
 		"--use_json",
 		action="store_true",
 		help="Specify whether to load and write metadata to/from JSON files. Default is false/not specified."
 	)
 	args = parser.parse_args()
+
+	# TODO:
+	# Add restart and multiprocessing functionality. Given the amount 
+	# of memory single processing consumes, this is not an immediate
+	# necessity.
+
+	###################################################################
+	# EXPLORE DATA
+	###################################################################
+	# Comment out if you don't want to run.
+	# explore_data()
+	# exit()
 
 	###################################################################
 	# VERIFY METADATA FILES
@@ -548,12 +538,14 @@ def main():
 	with open("config.json", "r") as f:
 		config = json.load(f)
 
+	# Set file extension.
 	extension = ".json" if args.use_json else ".msgpack"
 
 	# Load paths.
 	d2w_path = config["preprocessing"]["doc_to_words_path"]
 	trie_path = config["preprocessing"]["trie_cache_path"]
 
+	# Create trie cache path if it doesn't already exist.
 	if not os.path.exists(trie_path):
 		os.makedirs(trie_path, exist_ok=True)
 
@@ -564,65 +556,134 @@ def main():
 		if file.endswith(extension)
 	])
 
+	# Set paths for document to document_id and the inverse map paths.
 	doc_to_int_path = os.path.join(trie_path, "doc_to_int" + extension)
 	int_to_doc_path = os.path.join(trie_path, "int_to_doc" + extension)
 
 	###################################################################
 	# BUILD/LOAD DOCUMENT IDS
 	###################################################################
+	# NOTE:
+	# We have int_to_doc_str because msgpack is not able to read int
+	# values as keys in dictionaries. We convert back to int when
+	# loading from the file.
 
 	# Load or initialize map from documents to unique IDs.
 	if not os.path.exists(doc_to_int_path) or not os.path.exists(int_to_doc_path):
 		print("Indexing all documents to unique numerical IDs...")
 		doc_to_int = index_documents_as_ints(d2w_files, args.use_json)
 		int_to_doc = {value: key for key, value in doc_to_int.items()}
+		int_to_doc_str = {
+			str(key): value for key, value in int_to_doc.items()
+		}
 
 		# Save to file.
 		write_data_file(doc_to_int_path, doc_to_int, args.use_json)
-		write_data_file(int_to_doc_path, int_to_doc, args.use_json)
+		write_data_file(int_to_doc_path, int_to_doc_str, args.use_json)
 	else:
 		print("Loading all document to unique ID mappings...")
-		doc_to_int = load_data_file(doc_to_int_path, False)
+		doc_to_int = load_data_file(doc_to_int_path, args.use_json)
+		int_to_doc = load_data_file(int_to_doc_path, args.use_json)
+		int_to_doc = {
+			int(key): value for key, value in int_to_doc.items()
+		}
 
+	# Verify document to document id map (and its inverse) is 
+	# initialized.
 	assert doc_to_int is not None
+	assert int_to_doc is not None
 
 	###################################################################
 	# BUILD TRIES
 	###################################################################
-
 	# Set character limit to eliminate ridiculously long strings that 
 	# are probably not actual english words. Should help counter max-
 	# recursion limit error too.
 	limit = 60 # Limit was determined based on longest word in English language at 45 characters (Google'd it) but I allowed for some extra space.
 
-	# Initialize a list of all alphanumerics.
-	alpha_numerics = string.digits + string.ascii_lowercase + string.ascii_uppercase
+	# Initialize a list of all common english alphanumerics.
+	alpha_numerics = string.digits + string.ascii_lowercase
 	print("Creating tries...")
 
 	# Iterate through all alphanumerics and an "other" category. This
-	# will server as our target character to build our tries.
+	# will serve as our target characters to build our tries.
 	for char in list(alpha_numerics) + ["other"]:
-		print(f"Processing words that start with {char} character{'' if char in alpha_numerics else 's'}")
+		plural = "" if char in alpha_numerics else "s"
+		print(f"Processing words that start with {char} character{plural}")
 		path = os.path.join(trie_path, char + "_trie" + extension)
 
 		# Skip if path exists.
 		if os.path.exists(path):
 			continue
 
+		# Initialize and build the character trie.
 		char_trie = build_trie(limit, char, d2w_files, doc_to_int)
 
 		# Save the trie.
-		trie_dict = serialize_trie_node(char_trie.root)
+		# trie_dict = serialize_trie_node(char_trie.root)
+		# print(f"Saving trie to {path}")
+		# write_data_file(path, trie_dict, args.use_json)
 		print(f"Saving trie to {path}")
-		write_data_file(path, trie_dict, args.use_json)
+		save_trie(char_trie, path, args.use_json)
 
 		# Delete trie and collect garbage.
 		del char_trie
 		gc.collect()
 
-	# Load the tries.
+	###################################################################
+	# LOAD A TRIE
+	###################################################################
+
+	# Path to a test trie saved.
+	load_path = os.path.join(trie_path, "a_trie" + extension)
+	# save_path = os.path.join(trie_path, "0_trie_copy" + extension)
+	
+	# Load the trie.
+	print(f"Loading trie from {load_path}...")
+	loaded_trie = load_trie(load_path, args.use_json)
+
+	# Recompute the trie.
+	print(f"Recomputing the same trie...")
+	computed_trie = build_trie(limit, "a", d2w_files, doc_to_int)
+
+	# Verify that the loaded trie and recomputed trie are equal.
+	print(f"Loaded trie matched original: {loaded_trie == computed_trie}")
+
+	# Delete trie and collect garbage.
+	del computed_trie
+	gc.collect()
+
+	###################################################################
+	# SEARCH A TRIE
+	###################################################################
 
 	# Run a test search on the loaded tries.
+	search_terms = [
+		"apple", "ambrosia", "asymptomatic", "approximatedly", "bee"
+	] # "approximatedly" and "bee" should return nothing/None.
+
+	# Iterate through each search query.
+	for word in search_terms:
+		# Search the trie.
+		search_result = load_trie.search(word)
+
+		# Print the results.
+		print(f"Searching for : {word}")
+		print("Recieved:")
+		if search_result is None:
+			# If results are None, just print the results/None.
+			print(search_result)
+		else:
+			# If results are not None, iterate through each result and
+			# print the results in the "document_id, document" format.
+			results = list(search_result)
+			for result in results:
+				if isinstance(result, int):
+					print(f"{result}, {int_to_doc[result]}")
+
+	# Delete trie and collect garbage.
+	del loaded_trie
+	gc.collect()
 
 	# Exit the program.
 	exit(0)
