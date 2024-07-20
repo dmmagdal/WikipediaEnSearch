@@ -8,6 +8,7 @@
 import argparse
 import gc
 import json
+import multiprocessing as mp
 import os
 import string
 from typing import List, Dict, Any, Set
@@ -129,35 +130,75 @@ class Trie:
 	
 
 class TrieNodeGPT:
-	def __init__(self):
-		self.children = {}
+	def __init__(self) -> None:
+		'''
+		Initialize a trie node object.
+		@param: Takes no arguments.
+		@return: Returns an instance of the trie node object.
+		'''
+		# Initialize the children and document ids to an empty 
+		# dictionary and set respectively.
+		self.children = dict()
 		self.document_ids = set()
 
 
-	def __eq__(self, other):
+	def __eq__(self, other: Any) -> bool:
+		'''
+		Determine if the object passed in/being compared to is 
+			equivalent in both instance type and content.
+		@param: other (Any), the object being compared to.
+		@return: Returns a boolean from checking whether the input
+			object is a trie node AND has the same content as the 
+			current instance.
+		'''
+		# Check if the object is the same instance type.
 		if not isinstance(other, TrieNodeGPT):
 			return False
 
-		# Check if children and document_ids are equal
+		# Check if children and document_ids are equal.
 		return (self.children == other.children and
 				self.document_ids == other.document_ids)
 
 
 class TrieGPT:
-	def __init__(self):
+	def __init__(self) -> None:
+		'''
+		Initialize a trie object.
+		@param: Takes no arguments.
+		@return: Returns an instance of the trie object.
+		'''
 		# Initialize a root node.
 		self.root = TrieNodeGPT()
 
 
 	def __eq__(self, other: Any) -> bool:
+		'''
+		Determine if the object passed in/being compared to is 
+			equivalent in both instance type and content.
+		@param: other (Any), the object being compared to.
+		@return: Returns a boolean from checking whether the input
+			object is a trie AND has the same content as the current
+			instance.
+		'''
+		# Check if the object is the same instance type.
 		if not isinstance(other, TrieGPT):
 			return False
 		
-		# Check if the roots of both tries are equal
+		# Check if the roots of both tries are equal (calls trie node
+		# __eq__()).
 		return self.root == other.root
 
 
 	def insert(self, word: str, document_id: int) -> None:
+		'''
+		Insert a word and its associated document id into the trie.
+		@param: word (str), the word that is to be inserted into the
+			trie.
+		@param: document_id (int), the document id associated to the 
+			document where that word appears in, which will also be
+			stored into the trie.
+		@return: Returns nothing.
+		'''
 		# Set the pointer to the root of the tree.
 		node = self.root
 
@@ -171,6 +212,10 @@ class TrieGPT:
 			# Set the pointer to the child node.
 			node = node.children[char]
 
+		# NOTE:
+		# According to the documentation, using add() inserts a single 
+		# item vs update() inserts an iterable object (ie list).
+
 		# Pointer is expected to be at the bottom most child given the
 		# word. Add the document ID to the set in that node.
 		node.document_ids.add(document_id)  # Original
@@ -178,6 +223,13 @@ class TrieGPT:
 	
 
 	def search(self, word: str) -> Set[int] | None:
+		'''
+		Search for a word in the trie.
+		@param: word (int), the word we want to query from the trie.
+		@return: Returns either the set of document ids associated with
+			the query word OR None if the word does not exist within 
+			the trie.
+		'''
 		# Set the pointer to the root of the tree.
 		node = self.root
 
@@ -195,20 +247,48 @@ class TrieGPT:
 		return node.document_ids if node else None
 	
 
-# Save trie structure (simplified example, might need custom serialization)
 def serialize_trie_node(node: TrieNodeGPT) -> Dict:
-    return {
-        'children': {char: serialize_trie_node(child) for char, child in node.children.items()},
-        'document_ids': list(node.document_ids)
-    }
+	'''
+	Serialize a trie node to a dictionary.
+	@param: node (TrieNodeGPT), the trie node that needs to be 
+		serialized into a dictionary.
+	@return: Returns the trie node serialized as a dictionary.
+	'''
+	# Return a dictionary that recursilvely serializes the child nodes
+	# and stores the current node's document ids.
+	return {
+		'children': {
+			char: serialize_trie_node(child) 
+			for char, child in node.children.items()
+		},
+		'document_ids': list(node.document_ids)
+	}
 
 
-# Load trie structure
 def deserialize_trie_node(data: Dict) -> TrieNodeGPT:
-    node = TrieNodeGPT()
-    node.document_ids = set(data['document_ids'])
-    node.children = {char: deserialize_trie_node(child) for char, child in data['children'].items()}
-    return node
+	'''
+	Deserialize a trie from a (loaded) dictionary into a trie node.
+	@param: data (Dict), the trie data in the form of a dictionary
+		(usually loaded from a file).
+	@return: Returns a trie node containing all the appropriate object
+		data.
+	'''
+	# Initialize a new node.
+	node = TrieNodeGPT()
+
+	# Set the document_ids portion of the node to the set of document 
+	# ids from the current data passed in.
+	node.document_ids = set(data['document_ids'])
+
+	# Recursively retrieve the same deserialized data from the child
+	# nodes and insert that into the current node's children.
+	node.children = {
+		char: deserialize_trie_node(child) 
+		for char, child in data['children'].items()
+	}
+
+	# Return the current node.
+	return node
 
 
 # def group_words_by_starting_char(words):
@@ -305,35 +385,93 @@ def write_data_file(path: str, data: Dict, use_json: bool = False) -> None:
 		write_data_to_msgpack(path, data)
 
 
-def index_documents_as_ints(doc_to_word_files: List[str], use_json: bool = False) -> Dict:
+def index_documents_as_ints(d2w_files: List[str], use_json: bool = False) -> Dict[str, int]:
+	'''
+	Convert document/article strings in the corpus to unique int 
+		values.
+	@param: d2w_files (List[str]), the list of all document to word 
+		filepaths in the corpus.
+	@param: use_json (bool), whether the files being loaded are in a 
+		JSON or msgpack. Default is False (msgpack).
+	@return: Returns the trie loaded from the file.
+	'''
+	# Initialize an empty dictionary for the document to int mappings
+	# and the first int value to 0.
 	doc_to_int = dict()
 	int_value = 0
 
-	for file in tqdm(doc_to_word_files):
+	# Iterate through all the document to word filepaths in the corpus.
+	for file in tqdm(d2w_files):
+		# Load the data from the current file.
 		data = load_data_file(file, use_json)
 		
+		# Get the list of documents/articles from the keys. Iterate
+		# through each document/article.
 		articles = list(data.keys())
 		for article in articles:
+			# Map the document/article to the current int value and
+			# increment the int value.
 			doc_to_int[article] = int_value
 			int_value += 1
 
+	# Return the document to int mapping.
 	return doc_to_int
 
 
 def save_trie(trie: TrieGPT, path: str, use_json: bool = False) -> None:
-	# Save the trie.
+	'''
+	Save a trie to a file.
+	@param: trie (TrieGPT), the trie that is to be stored.
+	@param: path (str), the path of the file where the trie is to be 
+		stored.
+	@param: use_json (bool), whether the file being loaded is a JSON or
+		msgpack. Default is False (msgpack).
+	@return: Returns the trie loaded from the file.
+	'''
+	# Serialize the trie.
 	trie_dict = serialize_trie_node(trie.root)
+
+	# Write the serialized trie data to the file.
 	write_data_file(path, trie_dict, use_json)
 
 
 def load_trie(path: str, use_json: bool = False) -> TrieGPT:
-	# Load the trie.
+	'''
+	Load a trie from a file.
+	@param: path (str), the path of the file where the trie is stored.
+	@param: use_json (bool), whether the file being loaded is a JSON or
+		msgpack. Default is False (msgpack).
+	@return: Returns the trie loaded from the file.
+	'''
+	# Initialize an empty trie object.
 	trie = TrieGPT()
+
+	# Load the trie data from the file.
 	trie_data = load_data_file(path, use_json)
+
+	# Deserialize the trie data and load it into the trie.
 	trie.root = deserialize_trie_node(trie_data)
 
+	# Return the trie.
+	return trie
 
-def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict) -> TrieGPT:
+
+def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict[str, int]) -> TrieGPT:
+	'''
+	Construct a trie given a starting character and the list of 
+		document to word files. The trie will be built from all words 
+		in the corpus that start with that input character.
+	@param: limit (int), the maximum length of a word that will be 
+		stored in the trie.
+	@param: char (str), the character that all strings in the trie are
+		expected to start with.
+	@param: d2w_files (List[str]), the list of all document to word 
+		filepaths in the corpus.
+	@param: doc_to_int (Dict[str, int]), the mapping of each 
+		document/article to a unique numerical number.
+	@return: Returns a TrieGPT object built from the corpus where the
+		root node is the starting character passed in.
+	'''
 	# List of all common english alphanumerics.
 	alpha_numerics = string.digits + string.ascii_lowercase
 
@@ -359,24 +497,6 @@ def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict) ->
 				# Isolate the first character of the word.
 				word_char = word[0]
 
-				# if char == "other" and word_char not in alpha_numerics and len(word) <= limit:
-				# 	# Insert the word, document_id pair into the 
-				# 	# trie if the current target character is 
-				# 	# "other" AND the word length is under the 
-				# 	# predefined limit.
-				# 	char_trie.insert(word, doc_id)
-				# elif (word_char != "other" and word_char != char) or len(word) > limit:
-				# 	# Skip words that don't match the target
-				# 	# character or have lengths above the 
-				# 	# predefined limit.
-				# 	continue
-				# else:
-				# 	# Insert the word, document_id pair into the
-				# 	# trie if the current target character matches
-				# 	# the current word character AND the word 
-				# 	# length is under the predefined limit.
-				# 	char_trie.insert(word, doc_id)
-
 				# Skip words (do nothing/no insertions) that are too 
 				# long (outside of the limit).
 				if len(word) <= limit:
@@ -396,6 +516,12 @@ def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict) ->
 
 
 def explore_data() -> None:
+	'''
+	Perform a bit of data exploration by examining the number of words 
+		that start with different characters.
+	@param: Takes no arguments.
+	@return: Returns nothing.
+	'''
 	# Load config.
 	with open("config.json", "r") as f:
 		config = json.load(f)
@@ -665,7 +791,7 @@ def main():
 	# Iterate through each search query.
 	for word in search_terms:
 		# Search the trie.
-		search_result = load_trie.search(word)
+		search_result = loaded_trie.search(word)
 
 		# Print the results.
 		print(f"Searching for : {word}")
@@ -690,4 +816,7 @@ def main():
 
 
 if __name__ == '__main__':
+	# Required to initialize models on GPU for multiprocessing. Placed
+	# here due to recommendation from official python documentation.
+	mp.set_start_method("spawn", force=True)
 	main()
