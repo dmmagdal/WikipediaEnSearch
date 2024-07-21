@@ -23,9 +23,15 @@ def test() -> None:
 	@param: takes no arguments.
 	@return: returns nothing.
 	'''
-	# Input values to search engines
+	# Input values to search engines.
+	with open("config.json", "r") as f:
+		config = json.load(f)
+
 	bow_dir = "./metadata/bag_of_words"
-	index_dir = "./temp"
+	index_dir = "./test-temp"
+	tfidf_corpus_size = config["tf-idf_config"]["corpus_size"]
+	bm25_corpus_size = config["bm25_config"]["corpus_size"]
+	bm25_avg_doc_len = config["bm25_config"]["avg_doc_len"]
 	model = "bert"
 	device = "cpu"
 	if torch.cuda.is_available():
@@ -37,13 +43,16 @@ def test() -> None:
 	# INITIALIZE SEARCH ENGINES
 	###################################################################
 	search_1_init_start = time.perf_counter()
-	tf_idf = TF_IDF(bow_dir)
+	tf_idf = TF_IDF(bow_dir, corpus_size=tfidf_corpus_size)
 	search_1_init_end = time.perf_counter()
 	search_1_init_elapsed = search_1_init_end - search_1_init_start
 	print(f"Time to initialize TF-IDF search: {search_1_init_elapsed:.6f} seconds")
 
 	search_2_init_start = time.perf_counter()
-	bm25 = BM25(bow_dir)
+	bm25 = BM25(
+		bow_dir, corpus_size=bm25_corpus_size, 
+		avg_doc_len=bm25_avg_doc_len
+	)
 	search_2_init_end = time.perf_counter()
 	search_2_init_elapsed = search_2_init_end - search_2_init_start
 	print(f"Time to initialize BM25 search: {search_2_init_elapsed:.6f} seconds")
@@ -54,17 +63,17 @@ def test() -> None:
 	# search_3_init_elapsed = search_3_init_end - search_3_init_start
 	# print(f"Time to initialize Vector search: {search_3_init_elapsed:.6f} seconds")
 
-	search_4_init_start = time.perf_counter()
-	rerank = ReRankSearch(bow_dir, index_dir, model, device=device)
-	search_4_init_end = time.perf_counter()
-	search_4_init_elapsed = search_4_init_end - search_4_init_start
-	print(f"Time to initialize Rerank search: {search_4_init_elapsed:.6f} seconds")
+	# search_4_init_start = time.perf_counter()
+	# rerank = ReRankSearch(bow_dir, index_dir, model, device=device)
+	# search_4_init_end = time.perf_counter()
+	# search_4_init_elapsed = search_4_init_end - search_4_init_start
+	# print(f"Time to initialize Rerank search: {search_4_init_elapsed:.6f} seconds")
 
 	search_engines = [
 		("tf-idf", tf_idf), 
 		("bm25", bm25), 
 		# ("vector", vector_search),
-		("rerank", rerank)
+		# ("rerank", rerank)
 	]
 
 	###################################################################

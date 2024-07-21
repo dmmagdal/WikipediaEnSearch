@@ -184,7 +184,7 @@ def print_results(results: List, search_type: str = "tf-idf") -> None:
 
 
 class BagOfWords: 
-	def __init__(self, bow_dir: str, corpus_size: int = -1, srt: float=-1.0, use_json=False) -> None:
+	def __init__(self, bow_dir: str, corpus_size: int=-1, srt: float=-1.0, use_json=False) -> None:
 		'''
 		Initialize a Bag-of-Words search object.
 		@param: bow_dir (str), a path to the directory containing the 
@@ -324,6 +324,7 @@ class BagOfWords:
 
 		# Iterate through each file in the documents to words map 
 		# files.
+		print("Getting the number of documents in the corpus...")
 		for file in tqdm(self.doc_to_word_files):
 			# Load the data from the file and increment the counter by
 			# the number of documents in each file.
@@ -344,10 +345,19 @@ class BagOfWords:
 			self.int_to_doc_file, self.use_json
 		)
 
+		# Convert key back to int for document id to documents map.
+		int_to_doc = {
+			int(key): value for key, value in int_to_doc.items()
+		}
+
 		# Iterate through each word in the query words list.
 		for word in words:
 			# Isolate the first character in the word.
-			word_char = words[0]
+			word_char = word[0]
+
+			# Reset the char variable if it is not an alphanumeric.
+			if word_char not in self.alpha_numerics:
+				word_char = "other"
 
 			# Verify that the word is within the set word length limit.
 			# Will skip the word otherwise.
@@ -364,7 +374,7 @@ class BagOfWords:
 
 		# Iterate through the characters in the character to word
 		# dictionary.
-		for char in list(char_word_dict.keys()):
+		for char in sorted(list(char_word_dict.keys())):
 			# Reset the char variable if it is not an alphanumeric.
 			if char not in self.alpha_numerics:
 				char = "other"
@@ -381,6 +391,7 @@ class BagOfWords:
 
 			# Load the trie.
 			trie = load_trie(filepath, self.use_json)
+			gc.collect()
 
 			# Search for the document ids for each word in the trie.
 			for word in char_words:
@@ -395,6 +406,10 @@ class BagOfWords:
 						int_to_doc[result] for result in results
 					])
 
+			# Delete trie object and do garbage collection.
+			del trie
+			gc.collect()
+
 		# Convert the documents set to a list and return it.
 		return list(documents)
 	
@@ -408,7 +423,8 @@ class BagOfWords:
 			for doc in documents
 		]
 
-		for folder, name in basenames:
+		# for folder, name in basenames:
+		for _, name in basenames:
 			file_basename, article_hash = name.split(".xml")
 			file_basename += ".xml"
 			# file = os.path.join(folder, file_basename)
@@ -512,8 +528,11 @@ class BagOfWords:
 
 
 class TF_IDF(BagOfWords):
-	def __init__(self, bow_dir: str, srt: float=-1.0, use_json=False) -> None:
-		super().__init__(bow_dir=bow_dir, srt=srt, use_json=use_json)
+	def __init__(self, bow_dir: str, corpus_size: int=-1, srt: float=-1.0, use_json=False) -> None:
+		super().__init__(
+			bow_dir=bow_dir, corpus_size=corpus_size, srt=srt, 
+			use_json=use_json
+		)
 		pass
 
 
@@ -534,9 +553,14 @@ class TF_IDF(BagOfWords):
 
 		# Preprocess the search query to a bag of words.
 		words, word_freq = bow_preprocessing(query, True)
+		print("preprocessed words.")
+		print(json.dumps(words, indent=4))
 
 		# Isolate a list of files/documents to look through.
 		target_documents = self.get_documents_from_trie(words)
+		print("Isolated documents from tries.")
+		print(json.dumps(target_documents[:10], indent=4))
+		print(len(target_documents))
 
 		# Compute the TF-IDF for the corpus.
 		# _, corpus_tfidf = self.compute_tfidf(
@@ -622,12 +646,17 @@ class TF_IDF(BagOfWords):
 			for file in self.doc_to_word_files
 			if os.path.basename(file) in list(file_to_article.keys())
 		]
+		print("File to articles")
+		print(json.dumps(file_to_article, indent=4))
+		print(f"Matching files")
+		print(json.dumps(filtered_files, indent=4))
 
 		# NOTE:
 		# Heapq in use is a max-heap. This is implemented by 
 		# multiplying the cosine similarity score by -1. That way, the
 		# largest values are actually the smallest in the heap and are
 		# popped when we need to pushpop the largest scoring tuple.
+		print("Running TF-IDF search...")
 
 		# Compute TF-IDF for every file.
 		# for file in tqdm(self.doc_to_word_files):
@@ -710,9 +739,15 @@ class TF_IDF(BagOfWords):
 
 class BM25(BagOfWords):
 	def __init__(self, bow_dir: str, k1: float = 1.0, b: float = 0.0, 
-			  	srt: float=-1.0, use_json=False) -> None:
-		super().__init__(bow_dir=bow_dir, srt=srt, use_json=use_json)
-		self.avg_corpus_len = self.compute_avg_corpus_size()
+			  	corpus_size: int=-1, avg_doc_len: float=-1.0, srt: 
+				float=-1.0, use_json=False) -> None:
+		super().__init__(
+			bow_dir=bow_dir, corpus_size=corpus_size, srt=srt, 
+			use_json=use_json
+		)
+		self.avg_corpus_len = avg_doc_len
+		if self.avg_corpus_len < 0.0:
+			self.avg_corpus_len = self.compute_avg_corpus_size()
 		self.k1 = k1
 		self.b = b
 		pass
@@ -730,7 +765,8 @@ class BM25(BagOfWords):
 
 		# Iterate through each file in the documents to words map 
 		# files.
-		for file in self.doc_to_word_files:
+		print("Computing average document length of corpus...")
+		for file in tqdm(self.doc_to_word_files):
 			# Load the data from the file.
 			doc_to_words = load_data_file(file, self.use_json)
 
@@ -842,10 +878,11 @@ class BM25(BagOfWords):
 		# the lower scores if we have a max_results limit). BM25 also 
 		# doesn't require using cosine similarity since it aggregates
 		# the term values into a sum for the document score.
+		print("Running BM25 search...")
 
 		# Compute BM25 for every file.
 		# for file in tqdm(self.doc_to_word_files):
-		for file in filtered_files:
+		for file in tqdm(filtered_files):
 			# Load the doc to word frequency mappings from file.
 			doc_to_words = load_data_file(file, self.use_json)
 
@@ -1037,6 +1074,7 @@ class VectorSearch:
 		# NOTE:
 		# Assumes query text will exist within model tokenizer's max 
 		# length. There might be complications for longer queries.
+		print("Running Vector search...")
 
 		# Embed the query text.
 		query_embedding = self.embed_text(query)
@@ -1149,13 +1187,16 @@ class VectorSearch:
 
 class ReRankSearch:
 	def __init__(self, bow_path: str, index_path: str, model: str, 
-			  	srt: float = -1.0, use_json: bool = False, 
+			  	corpus_size: int=-1, avg_doc_len: float=-1.0,
+				srt: float = -1.0, use_json: bool = False, 
 				k1: float = 1.0, b: float = 0.0, device: str = "cpu",
 				use_tf_idf: bool = False):
 		# Set class variables.
 		self.bow_dir = bow_path
 		self.index_dir = index_path
 		self.model = model
+		self.corpus_size = corpus_size
+		self.avg_corpus_len = avg_doc_len
 		self.srt = srt
 		self.use_json = use_json
 		self.k1 = k1
@@ -1167,12 +1208,15 @@ class ReRankSearch:
 		self.tf_idf, self.bm25 = None, None
 		if use_tf_idf:
 			self.tf_idf = TF_IDF(
-				self.bow_dir, self.srt, use_json=self.use_json
+				self.bow_dir, self.corpus_size, self.srt, 
+				use_json=self.use_json
 			)
 		else:
 			self.bm25 = BM25(
-				self.bow_dir, srt=self.srt, k1=self.k1, b=self.b, 
-				use_json=self.use_json
+				self.bow_dir, k1=self.k1, b=self.b, 
+				corpus_size=self.corpus_size, 
+				avg_doc_len=self.avg_corpus_len,
+				srt=self.srt, use_json=self.use_json
 			)
 		self.vector_search = VectorSearch(
 			self.model, self.index_dir, self.device
