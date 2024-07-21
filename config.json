@@ -1,6 +1,7 @@
 {
     "sparse-retrieval-threshold": -1.0,
     "bm25_config": {
+        "bow_dir": "./metadata/bag_of_words/",
         "doc_to_words": "./metadata/bag_of_words/doc_to_words",
         "word_to_docs": "./metadata/bag_of_words/word_to_docs",
         "tf_idf_cache": "./metadata/bag_of_words/tf_idf_cache",
@@ -10,6 +11,7 @@
         "avg_doc_len": 0
     },
     "tf-idf_config": {
+        "bow_dir": "./metadata/bag_of_words/",
         "doc_to_words": "./metadata/bag_of_words/doc_to_words",
         "word_to_docs": "./metadata/bag_of_words/word_to_docs",
         "tf_idf_cache": "./metadata/bag_of_words/tf_idf_cache",
