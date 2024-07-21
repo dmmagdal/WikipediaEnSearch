@@ -8,7 +8,7 @@
         "idf_cache": "./metadata/bag_of_words/idf_cache",
         "trie_cache": "./metadata/bag_of_words/trie_cache",
         "corpus_size": 21118935,
-        "avg_doc_len": 0
+        "avg_doc_len": 568.731806220342
     },
     "tf-idf_config": {
         "bow_dir": "./metadata/bag_of_words/",
