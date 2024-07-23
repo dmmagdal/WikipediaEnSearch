@@ -169,7 +169,8 @@ def main():
 	files = sorted([
 		os.path.join(folder, file) for file in os.listdir(folder)
 	])
-	output_folder = config["preprocessing"]["trie_cache_path"]
+	output_folder = config["preprocessing"]["redirect_cache_path"]
+	os.makedirs(output_folder, exist_ok=True)
 
 	# Initialize article and redirect counters.
 	article_counter = 0
@@ -215,6 +216,10 @@ def main():
 	print(f"Total article count: {article_counter}")
 	print(f"Total redirect count: {redirect_counter}")
 
+	# NOTE:
+	# Results found were 23,820,807 total articles and number of
+	# redirect articles detected were 11,547,515.
+
 	# Save the list of files with redirects to file.
 	# with open("redirect_files.txt", "w+") as f:
 	# 	f.write("\n".join(redirected_files))
@@ -243,4 +248,7 @@ def main():
 
 
 if __name__ == '__main__':
+	# Required to initialize models on GPU for multiprocessing. Placed
+	# here due to recommendation from official python documentation.
+	mp.set_start_method("spawn", force=True)
 	main()
