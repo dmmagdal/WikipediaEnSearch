@@ -843,7 +843,7 @@ def merge_mappings(results: List[List]) -> Tuple[Dict]:
 	return aggr_doc_to_word, aggr_word_to_doc, aggr_vector_metadata
 
 
-def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[str], num_proc: int = 1):
+def multiprocess_articles(args: Namespace, device: str, file: str, pages_str: List[str], num_proc: int = 1):
 	'''
 	Preprocess the text (in multiple processors).
 	@param: args (Namespace), the arguments passed in from the 
@@ -860,10 +860,10 @@ def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[s
 		data and metadata to index the articles.
 	'''
 	# Break down the list of pages into chunks.
-	chunk_size = math.ceil(len(pages) / num_proc)
+	chunk_size = math.ceil(len(pages_str) / num_proc)
 	chunks = [
-		pages[i:i + chunk_size] 
-		for i in range(0, len(pages), chunk_size)
+		pages_str[i:i + chunk_size] 
+		for i in range(0, len(pages_str), chunk_size)
 	]
 
 	# Define the arguments list.
@@ -892,7 +892,7 @@ def process_articles(args: Namespace, device: str, file: str, pages_str: List[st
 		embedding model will use.
 	@param: file (str), the filepath of the current file being
 		processed.
-	@param: pages (List[str]), the raw xml text that is going to be
+	@param: pages_str (List[str]), the raw xml text that is going to be
 		processed.
 	@return: returns the set of dictionaries and list containing the 
 		necessary data and metadata to index the articles.
