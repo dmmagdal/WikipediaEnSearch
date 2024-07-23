@@ -845,7 +845,7 @@ def merge_mappings(results: List[List]) -> Tuple[Dict]:
 
 def multiprocess_articles(args: Namespace, device: str, file: str, pages: List[str], num_proc: int = 1):
 	'''
-	Preprocess the text (in a multiple processors.
+	Preprocess the text (in multiple processors).
 	@param: args (Namespace), the arguments passed in from the 
 		terminal.
 	@param: device (str), the name of the CPU or GPU device that the
