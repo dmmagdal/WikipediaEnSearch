@@ -345,7 +345,7 @@ def load_trie(path: str, use_json: bool = False) -> TrieGPT:
 	return trie
 
 
-def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict[str, int]) -> TrieGPT:
+def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict[str, int], redirect_files: List[str], use_json: bool = False) -> TrieGPT:
 	'''
 	Construct a trie given a starting character and the list of 
 		document to word files. The trie will be built from all words 
@@ -358,6 +358,10 @@ def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict[str
 		filepaths in the corpus.
 	@param: doc_to_int (Dict[str, int]), the mapping of each 
 		document/article to a unique numerical number.
+	@param: redirect_files (List[str]), the list of all filepaths 
+		containing the documents that redirect to other documents.
+	@param: use_json (bool), whether to load the data file using JSON 
+		msgpack (default is False).
 	@return: Returns a TrieGPT object built from the corpus where the
 		root node is the starting character passed in.
 	'''
@@ -367,13 +371,30 @@ def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict[str
 	# Initialize the trie for the character group.
 	char_trie = TrieGPT()
 
+	# Load up all redirects into a list.
+	redirects = list()
+	for redirect_file in redirect_files:
+		redirects += load_data_file(
+			redirect_file, use_json
+		)
+
 	# Iterate through the document to word files.
 	for file in tqdm(d2w_files):
 		# Load the doc to word data.
-		doc_to_words = load_data_file(file, False)
+		doc_to_words = load_data_file(file, use_json)
+
+		# Create a subset of all documents in the data that are 
+		# redirects.
+		docs = doc_to_words.keys()
+		redirect_subset = set(redirects).intersection(set(docs))
 
 		# Iterate through each document in the file.
-		for doc in list(doc_to_words.keys()):
+		for doc in list(docs):
+			# Skip the document if it is marked as a known redirect
+			# document/article.
+			if doc in redirect_subset:
+				continue
+	
 			# Load the document word frequencies.
 			word_freq = doc_to_words[doc]
 
@@ -495,7 +516,9 @@ def explore_data() -> None:
 	# - It takes around 15 minutes on server to build mapping of 
 	#	documents to their document ids.
 	# - It takes around 25 to 30 minutes on server to build and save a 
-	#   trie for each alphanumerical starting character.
+	#   trie for each alphanumerical starting character. This increased
+	#   to 30 to 35 minutes when the code remove redirect documents was
+	#   added.
 	# - RAM overhead is around 35GB for just a single trie so using
 	#   multprocessing (even on the server) is not advised without 
 	#   sufficient memory resources.
@@ -559,6 +582,7 @@ def main():
 	# Load paths.
 	d2w_path = config["preprocessing"]["doc_to_words_path"]
 	trie_path = config["preprocessing"]["trie_cache_path"]
+	redirect_path = config["preprocessing"]["redirect_cache_path"]
 
 	# Create trie cache path if it doesn't already exist.
 	if not os.path.exists(trie_path):
@@ -570,6 +594,13 @@ def main():
 		for file in os.listdir(d2w_path)
 		if file.endswith(extension)
 	])
+
+	# Redirect files.
+	redirect_files = [
+		os.path.join(redirect_path, file) 
+		for file in os.listdir(redirect_path)
+		if file.endswith(extension)
+	]
 
 	# Set paths for document to document_id and the inverse map paths.
 	doc_to_int_path = os.path.join(trie_path, "doc_to_int" + extension)
@@ -625,14 +656,17 @@ def main():
 	for char in list(alpha_numerics) + ["other"]:
 		plural = "" if char in alpha_numerics else "s"
 		print(f"Processing words that start with {char} character{plural}")
-		path = os.path.join(trie_path, char + "_trie" + extension)
+		# path = os.path.join(trie_path, char + "_trie" + extension)
+		path = os.path.join(trie_path, char + "_trie_slim" + extension)
 
 		# Skip if path exists.
 		if os.path.exists(path):
 			continue
 
 		# Initialize and build the character trie.
-		char_trie = build_trie(limit, char, d2w_files, doc_to_int)
+		char_trie = build_trie(
+			limit, char, d2w_files, doc_to_int, redirect_files, args.use_json
+		)
 
 		# Save the trie.
 		# trie_dict = serialize_trie_node(char_trie.root)
