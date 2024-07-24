@@ -684,7 +684,7 @@ def main():
 	###################################################################
 
 	# Path to a test trie saved.
-	load_path = os.path.join(trie_path, "a_trie" + extension)
+	load_path = os.path.join(trie_path, "a_trie_slim" + extension)
 	# save_path = os.path.join(trie_path, "0_trie_copy" + extension)
 	
 	# Load the trie.
