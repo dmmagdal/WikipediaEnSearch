@@ -694,7 +694,9 @@ def main():
 
 	# Recompute the trie.
 	print(f"Recomputing the same trie...")
-	computed_trie = build_trie(limit, "a", d2w_files, doc_to_int)
+	computed_trie = build_trie(
+		limit, "a", d2w_files, doc_to_int, redirect_files, args.use_json
+	)
 
 	# Verify that the loaded trie and recomputed trie are equal.
 	print(f"Loaded trie matched original: {loaded_trie == computed_trie}")
