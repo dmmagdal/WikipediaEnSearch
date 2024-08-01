@@ -529,6 +529,7 @@ def main():
 	###################################################################
 	# PROGRAM ARGUMENTS
 	###################################################################
+	
 	parser = argparse.ArgumentParser()
 	# parser.add_argument(
 	# 	"--restart",
@@ -556,6 +557,7 @@ def main():
 	###################################################################
 	# EXPLORE DATA
 	###################################################################
+
 	# Comment out if you don't want to run.
 	# explore_data()
 	# exit()
@@ -563,6 +565,7 @@ def main():
 	###################################################################
 	# VERIFY METADATA FILES
 	###################################################################
+
 	# Open config file.
 	with open("config.json", "r") as f:
 		config = json.load(f)
@@ -627,6 +630,7 @@ def main():
 	###################################################################
 	# BUILD/LOAD DOCUMENT IDS
 	###################################################################
+
 	# NOTE:
 	# We have int_to_doc_str because msgpack is not able to read int
 	# values as keys in dictionaries. We convert back to int when
@@ -670,6 +674,7 @@ def main():
 	###################################################################
 	# BUILD TRIES
 	###################################################################
+
 	# Set character limit to eliminate ridiculously long strings that 
 	# are probably not actual english words. Should help counter max-
 	# recursion limit error too.
@@ -858,7 +863,7 @@ def main():
 
 	# Save the shard map.
 	shard_path = os.path.join(trie_path, "shard_map" + extension)
-	write_data_file(shard_path, args.use_json)
+	write_data_file(shard_path, shard_map, args.use_json)
 
 	# Exit the program.
 	exit(0)
