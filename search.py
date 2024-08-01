@@ -259,7 +259,7 @@ class BagOfWords:
 		# contains document id to document mapping as well).
 		self.idf_folder = os.path.join(bow_dir, "idf_cache")
 		self.trie_folder = os.path.join(bow_dir, "trie_cache")
-
+		self.redirect_folder = os.path.join(bow_dir, "redirect_cache")
 
 		# Verify that the paths exist.
 		assert os.path.exists(self.word_to_doc_folder) and os.path.isdir(self.word_to_doc_folder),\
@@ -298,6 +298,11 @@ class BagOfWords:
 		self.int_to_doc_file = os.path.join(
 			self.trie_folder, doc_id_map_files[1]
 		)
+		self.redirect_files = [
+			os.path.join(self.redirect_folder, file),
+			for file in os.listdir(self.redirect_folder)
+			if file.endswith(self.extension)
+		]
 		
 		# Verify that the list of files for each mapping folder is not
 		# empty.
@@ -311,7 +316,9 @@ class BagOfWords:
 			f"Detected document to words folder {self.trie_folder} does have not supported files"
 		assert os.path.exists(self.int_to_doc_file),\
 			f"Required document id to document file in {self.trie_folder} does exist"
-		
+		assert len(self.redirect_files) != 0,\
+			f"Detected redirected documents folder {self.redirect_folder} does have not supported files"		
+
 
 	def get_number_of_documents(self) -> int:
 		'''
@@ -371,6 +378,7 @@ class BagOfWords:
 		# Initialize the set of documents that will be returned. Each
 		# item in the list will be a unique string.
 		documents = set()
+		doc_to_idf = dict()
 
 		# Iterate through the characters in the character to word
 		# dictionary.
@@ -381,6 +389,9 @@ class BagOfWords:
 
 			# Unpack the words in the character to words dictionary.
 			char_words = char_word_dict[char]
+			char_words = sorted(char_words)
+
+			idf = self.compute_idf(char_words)
 			
 			# Use the character to determine the filepath of the trie.
 			file_base = char + "_trie" + self.extension
@@ -396,6 +407,7 @@ class BagOfWords:
 			# Search for the document ids for each word in the trie.
 			for word in char_words:
 				results = trie.search(word)
+				word_idf = idf[char_words.index(word)]
 
 				# If the results returned are not None, take the 
 				# results and add them to the return documents set
@@ -405,13 +417,32 @@ class BagOfWords:
 					documents.update([
 						int_to_doc[result] for result in results
 					])
+					print(f"Word: {word}, Num doc IDs: {len(results)}, IDF: {word_idf}")
+					for document_id in results:
+						document_str = int_to_doc[document_id]
+						if document_str not in doc_to_idf:
+							doc_to_idf[document_str] = word_idf
+						else:
+							doc_to_idf[document_str] += word_idf
 
 			# Delete trie object and do garbage collection.
 			del trie
 			gc.collect()
 
 		# Convert the documents set to a list and return it.
-		return list(documents)
+		# return list(documents)
+		documents_idf_sum = sorted(
+			[
+				(document, idf_sum) 
+				for document, idf_sum in doc_to_idf.items()
+			],
+			key=lambda x: x[1],
+			reverse=True
+		)
+		# documents_idf_sum = documents_idf_sum[:1_000_000]
+		print(json.dumps(documents_idf_sum[:10], indent=4))
+		documents = [document for document, _ in documents_idf_sum]
+		return documents
 	
 
 	def get_document_paths_from_documents(self, documents: List[str]):
@@ -557,6 +588,7 @@ class TF_IDF(BagOfWords):
 		print(json.dumps(words, indent=4))
 
 		# Isolate a list of files/documents to look through.
+		words = sorted(words)
 		target_documents = self.get_documents_from_trie(words)
 		print("Isolated documents from tries.")
 		print(json.dumps(target_documents[:10], indent=4))
@@ -644,7 +676,7 @@ class TF_IDF(BagOfWords):
 		filtered_files = [
 			file 
 			for file in self.doc_to_word_files
-			if os.path.basename(file) in list(file_to_article.keys())
+			if os.path.basename(file).replace(self.extension, ".xml") in list(file_to_article.keys())
 		]
 		print("File to articles")
 		print(json.dumps(file_to_article, indent=4))
