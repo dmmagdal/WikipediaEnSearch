@@ -334,104 +334,6 @@ def load_trie(path: str, use_json: bool = False) -> TrieGPT:
 	return trie
 
 
-def build_tries(char: str, words: List[str], d2w_files: List[str],
-			doc_to_int: Dict[str, int], redirect_files: List[str], 
-			trie_path: str, use_json: bool = False) -> Dict[str, List[str]]:
-	# List of all common english alphanumerics.
-	alpha_numerics = string.digits + string.ascii_lowercase
-
-	# Set the file extension.
-	extension = ".json" if use_json else ".msgpack"
-
-	# Filter out words based on the starting character and length.
-	if char in alpha_numerics:
-		# Can be applied to all words that start with alphanumerics
-		char_words = [
-			word for word in words 
-			if word.startswith(char)
-		]
-	else:
-		# Can be applied when char is "other".
-		char_words = [
-			word for word in words 
-			if word[0] not in alpha_numerics
-		]
-
-	# Sort the remaining words and chunk the list. 
-	char_words = sorted(char_words)
-	chunk_size = 100_000
-	word_chunks = [
-		char_words[i:i + chunk_size]
-		for i in range(0, len(char_words), chunk_size)
-	]
-
-	# Load up all redirects into a list.
-	redirects = list()
-	for redirect_file in redirect_files:
-		redirects += load_data_file(
-			redirect_file, use_json
-		)
-
-	# Initialize a map to store the range of values for the character
-	# tries.
-	char_map = dict()
-
-	# Iterate through the document to word files.
-	for file in tqdm(d2w_files):
-		# Iterate through each word chunk.
-		for idx, chunk in enumerate(word_chunks):
-			print(f"Processing chunk {idx + 1} for {char}")
-
-			# Trie path.
-			basename = char + "_" + str(idx + 1) + "_trie_shard_slim" + extension
-			path = os.path.join(trie_path, basename)
-
-			# Initialize trie for the word chunk.
-			if os.path.exists(path):
-				char_trie = load_trie(path, use_json)
-			else:
-				char_trie = TrieGPT()
-
-			# Load the doc to word data.
-			doc_to_words = load_data_file(file, use_json)
-
-			# Create a subset of all documents in the data that are 
-			# redirects.
-			docs = list(doc_to_words.keys())
-			redirect_subset = set(redirects).intersection(set(docs))
-
-			# Iterate through each document in the file.
-			for doc in tqdm(docs):
-				# Skip the document if it is marked as a known redirect
-				# document/article.
-				if doc in redirect_subset:
-					continue
-	
-				# Load the document word frequencies.
-				word_freq = doc_to_words[doc]
-
-				# Retrieve the document's numerical ID from the 
-				# document to int dictionary.
-				doc_id = doc_to_int[doc]
-
-				# Iterate through each word in the word frequency map.
-				for word in list(word_freq.keys()):
-					if word in chunk:
-						char_trie.insert(word, doc_id)
-
-			# Save the trie.
-			print(f"Saving trie to {path}")
-			save_trie(char_trie, path, use_json)
-
-			# Set the start and end word in the range used in the chunk
-			# list.
-			char_map[basename] = [chunk[0], chunk[-1]]
-
-	# Return the map for the character mapping each path to a chunk 
-	# range.
-	return char_map
-
-
 def build_trie(limit: int, char: str, d2w_files: List[str], doc_to_int: Dict[str, int], 
 			redirect_files: List[str], use_json: bool = False) -> TrieGPT:
 	'''
@@ -758,40 +660,12 @@ def main():
 	###################################################################
 	# BUILD TRIES (SHARDED)
 	###################################################################
-	# Set character limit to eliminate ridiculously long strings that 
-	# are probably not actual english words. Should help counter max-
-	# recursion limit error too.
-	# limit = 60 # Limit was determined based on longest word in English language at 45 characters (Google'd it) but I allowed for some extra space.
-
-	# # Initialize a list of all common english alphanumerics.
-	# alpha_numerics = string.digits + string.ascii_lowercase
-	# print("Creating tries...")
-
-	# char_maps = dict()
-
-	# # Iterate through all alphanumerics and an "other" category. This
-	# # will serve as our target characters to build our tries.
-	# for char in list(alpha_numerics) + ["other"]:
-	# 	plural = "" if char in alpha_numerics else "s"
-	# 	print(f"Processing words that start with {char} character{plural}")
-
-	# 	char_maps[char] = build_tries(
-	# 		char, words, d2w_files, doc_to_int, redirect_files,
-	# 		trie_path, args.use_json
-	# 	)
-
-	# char_maps_path = os.path.join(
-	# 	trie_path,
-	# 	"char_trie_shard_map" + extension
-	# )
-	# print(json.dumps(char_maps, indent=4))
-	# write_data_file(char_maps_path, char_maps, args.use_json)
 
 	# NOTE:
-	# Abandoned this section. Building tries from scratch and sharding
-	# while building is incredibly time and compute intensive. It would
-	# be much more economical to build the full sized tries (per 
-	# starting letter) first before moving on and sharding each trie.
+	# Abandoned this section. Building tries from scratch while 
+	# sharding is incredibly time and compute intensive. It would be
+	# much more economical to build the full sized tries (per starting
+	# letter) first before moving on and sharding each trie.
 
 	###################################################################
 	# BUILD TRIES
