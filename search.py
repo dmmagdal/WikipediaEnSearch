@@ -71,21 +71,57 @@ def load_article_text(path: str, sha1_list: List[str]) -> List[str]:
 	# Parse the file with beautifulsoup.
 	soup = BeautifulSoup(file, "lxml")
 
-	# Initiaize the return list of articles.
-	articles = []
+	# Initialize list with default return values for all SHA1s passed
+	# into the SHA1 list argument.
+	articles = [
+		f"ERROR: COULD NOT LOCATE ARTICLE {sha1_hash} in {path}"
+		for sha1_hash in sha1_list
+	]
 
-	# Iterate through the different SHA1 values from the SHA1 hash
-	# list.
-	for sha1_hash in sha1_list:
-		# Isolate the target article with the given SHA1 hash. Append
-		# the processed text if it was found, otherwise append the
-		# error message string.
-		page = soup.find("page", attrs={"sha1": sha1_hash})
-		# page = soup.find("page", sha1=sha1_hash)
-		if page is not None:
-			articles.append(process_page(page))
-		else:
-			articles.append(f"ERROR: COULD NOT LOCATE ARTICLE {sha1_hash} in {path}")
+	# Iterate through every article/page in the file.
+	for page in soup.find_all("page"):
+		# Isolate the article/page's SHA1.
+		sha1_tag = page.find("sha1")
+
+		# Skip articles that don't have a SHA1 (should not be possible 
+		# but you never know).
+		if sha1_tag is None:
+			continue
+
+		# Clean article SHA1 text.
+		article_sha1 = sha1_tag.get_text()
+		article_sha1 = article_sha1.replace(" ", "").replace("\n", "")
+
+		# If the article/page's SHA1 matches one of the values in the 
+		# SHA1 list, load the text for that article in the appropriate
+		# spot in the list.
+		if article_sha1 in sha1_list:
+			sha1_index = sha1_list.index(article_sha1)
+			articles[sha1_index] = process_page(page)
+
+	# NOTE
+	# The above process is a linear operation. It can be optimized for
+	# multithreading/processing. There is also no "smart" or clever way
+	# to just isolate pages with the desired SHA1 hashes on account of 
+	# the fact that the strings containing the hashes are dirty in the
+	# original file (they contain white space and newline characters)
+	# so a string match becomes a bit difficult.
+
+	# # Initiaize the return list of articles.
+	# articles = []
+
+	# # Iterate through the different SHA1 values from the SHA1 hash
+	# # list.
+	# for sha1_hash in sha1_list:
+	# 	# Isolate the target article with the given SHA1 hash. Append
+	# 	# the processed text if it was found, otherwise append the
+	# 	# error message string.
+	# 	page = soup.find("page", attrs={"sha1": sha1_hash})
+	# 	# page = soup.find("page", sha1=sha1_hash)
+	# 	if page is not None:
+	# 		articles.append(process_page(page))
+	# 	else:
+	# 		articles.append(f"ERROR: COULD NOT LOCATE ARTICLE {sha1_hash} in {path}")
 
 	# Return the list of article texts.
 	return articles
@@ -204,6 +240,8 @@ class BagOfWords:
 		self.idf_files = None
 		self.trie_files = None
 		self.int_to_doc_file = None
+		self.trie_shard_map_file = None
+		self.documents_folder = "./WikipediaEnDownload/WikipediaData"
 		self.corpus_size = corpus_size	# total number of documents (articles)
 		self.srt = srt					# similarity relative threshold value
 		self.use_json = use_json
@@ -219,12 +257,18 @@ class BagOfWords:
 		initialized_variables = [
 			self.word_to_doc_folder, self.doc_to_word_folder,
 			self.word_to_doc_files, self.doc_to_word_files,
-			self.idf_files, self.trie_files, self.int_to_doc_file
+			self.idf_files, self.trie_files, self.int_to_doc_file,
+			self.trie_shard_map_file
 		]
 		assert None not in initialized_variables,\
 			"Some variables were not initialized properly"
 		
-		# Computethe corpus size if the default value for the argument 
+		# Load the shard map.
+		self.trie_shard_map = load_data_file(
+			self.trie_shard_map_file, self.use_json
+		)
+		
+		# Compute the corpus size if the default value for the argument 
 		# is detected.
 		if self.corpus_size == -1:
 			self.corpus_size = self.get_number_of_documents()
@@ -283,7 +327,7 @@ class BagOfWords:
 		# document id to document mappings.
 		doc_id_map_files = [
 			"doc_to_int" + self.extension,
-			"int_to_doc" + self.extension
+			"int_to_doc" + self.extension,
 		]
 		self.idf_files = [
 			os.path.join(self.idf_folder, file)
@@ -293,13 +337,18 @@ class BagOfWords:
 		self.trie_files = [
 			os.path.join(self.trie_folder, file)
 			for file in os.listdir(self.trie_folder)
-			if file.endswith(self.extension) and file not in doc_id_map_files
+			if file.endswith(self.extension) and \
+				file not in doc_id_map_files and \
+				"shard" in file and "map" not in file
 		]
+		self.trie_shard_map_file = os.path.join(
+			self.trie_folder, "shard_map" + self.extension
+		)
 		self.int_to_doc_file = os.path.join(
 			self.trie_folder, doc_id_map_files[1]
 		)
 		self.redirect_files = [
-			os.path.join(self.redirect_folder, file),
+			os.path.join(self.redirect_folder, file)
 			for file in os.listdir(self.redirect_folder)
 			if file.endswith(self.extension)
 		]
@@ -318,6 +367,8 @@ class BagOfWords:
 			f"Required document id to document file in {self.trie_folder} does exist"
 		assert len(self.redirect_files) != 0,\
 			f"Detected redirected documents folder {self.redirect_folder} does have not supported files"		
+		assert os.path.exists(self.trie_shard_map_file),\
+			f"Required trie shard map file in {self.trie_folder} does not exist"
 
 
 	def get_number_of_documents(self) -> int:
@@ -378,7 +429,9 @@ class BagOfWords:
 		# Initialize the set of documents that will be returned. Each
 		# item in the list will be a unique string.
 		documents = set()
-		doc_to_idf = dict()
+		# doc_to_idf = dict()
+
+		import time
 
 		# Iterate through the characters in the character to word
 		# dictionary.
@@ -389,60 +442,120 @@ class BagOfWords:
 
 			# Unpack the words in the character to words dictionary.
 			char_words = char_word_dict[char]
-			char_words = sorted(char_words)
+			# char_words = sorted(char_words)
+			# idf = self.compute_idf(char_words)
 
-			idf = self.compute_idf(char_words)
-			
-			# Use the character to determine the filepath of the trie.
-			file_base = char + "_trie" + self.extension
-			filepath = os.path.join(self.trie_folder, file_base)
+			# Identify the list of trie shards for this character.
+			shard_files = [
+				shard_path 
+				for shard_path in list(self.trie_shard_map.keys())
+				if os.path.basename(shard_path).startswith(f"{char}_shard") and \
+					shard_path.endswith(self.extension)
+			]
 
-			# Verify that the filepath exists in the list.
-			assert filepath in self.trie_files
+			# Initialize a map of character trie shards to words.
+			shard_to_words = dict()
 
-			# Load the trie.
-			trie = load_trie(filepath, self.use_json)
-			gc.collect()
-
-			# Search for the document ids for each word in the trie.
-			for word in char_words:
-				results = trie.search(word)
-				word_idf = idf[char_words.index(word)]
-
-				# If the results returned are not None, take the 
-				# results and add them to the return documents set
-				# (make sure to convert from document ids to 
-				# documents).
-				if results is not None:
-					documents.update([
-						int_to_doc[result] for result in results
-					])
-					print(f"Word: {word}, Num doc IDs: {len(results)}, IDF: {word_idf}")
-					for document_id in results:
-						document_str = int_to_doc[document_id]
-						if document_str not in doc_to_idf:
-							doc_to_idf[document_str] = word_idf
+			# Map each character trie shard to a word if applicable.
+			for shard in shard_files:
+				word_range = self.trie_shard_map[shard]
+				for word in char_words:
+					# From generate_trie.py: words were sorted 
+					# lexicographically. Means that this is how the
+					# checking the range should look 
+					# (small <= word <= large).
+					if word_range[0] <= word <= word_range[-1]:
+						if shard in list(shard_to_words.keys()):
+							shard_to_words[shard].append(word)
 						else:
-							doc_to_idf[document_str] += word_idf
+							shard_to_words[shard] = [word]
 
-			# Delete trie object and do garbage collection.
-			del trie
+			# Iterate through all character trie shards that map to at
+			# least one word.
+			for shard in list(shard_to_words.keys()):
+				# Load the words that map to the trie shard.
+				print(f"Loading from trie shard {shard}")
+				search_words = shard_to_words[shard]
+
+				# Load the trie shard.
+				start = time.perf_counter()
+				trie = load_trie(shard, self.use_json)
+				end = time.perf_counter()
+				print(f"Time to load shard: {(end - start):.6f} seconds")
+
+				# Iterate through each word. Update the documents set
+				# if the results returned from the trie are valid (not
+				# None).
+				for word in search_words:
+					results = trie.search(word)
+					if results is not None:
+						documents.update([
+							int_to_doc[result] for result in results
+						])
+
+				# Memory cleanup.
+				del trie
+				gc.collect()
+
+			# Memory cleanup.
+			del shard_files
+			del shard_to_words
 			gc.collect()
 
 		# Convert the documents set to a list and return it.
-		# return list(documents)
-		documents_idf_sum = sorted(
-			[
-				(document, idf_sum) 
-				for document, idf_sum in doc_to_idf.items()
-			],
-			key=lambda x: x[1],
-			reverse=True
-		)
-		# documents_idf_sum = documents_idf_sum[:1_000_000]
-		print(json.dumps(documents_idf_sum[:10], indent=4))
-		documents = [document for document, _ in documents_idf_sum]
-		return documents
+		return list(documents)
+
+			
+		# 	# Use the character to determine the filepath of the trie.
+		# 	file_base = char + "_trie" + self.extension
+		# 	filepath = os.path.join(self.trie_folder, file_base)
+
+		# 	# Verify that the filepath exists in the list.
+		# 	assert filepath in self.trie_files
+
+		# 	# Load the trie.
+		# 	trie = load_trie(filepath, self.use_json)
+		# 	gc.collect()
+
+		# 	# Search for the document ids for each word in the trie.
+		# 	for word in char_words:
+		# 		results = trie.search(word)
+		# 		word_idf = idf[char_words.index(word)]
+
+		# 		# If the results returned are not None, take the 
+		# 		# results and add them to the return documents set
+		# 		# (make sure to convert from document ids to 
+		# 		# documents).
+		# 		if results is not None:
+		# 			documents.update([
+		# 				int_to_doc[result] for result in results
+		# 			])
+		# 			print(f"Word: {word}, Num doc IDs: {len(results)}, IDF: {word_idf}")
+		# 			for document_id in results:
+		# 				document_str = int_to_doc[document_id]
+		# 				if document_str not in doc_to_idf:
+		# 					doc_to_idf[document_str] = word_idf
+		# 				else:
+		# 					doc_to_idf[document_str] += word_idf
+
+		# 	# Delete trie object and do garbage collection.
+		# 	del trie
+		# 	gc.collect()
+
+		# # Convert the documents set to a list and return it.
+		# # return list(documents)
+		# documents_idf_sum = sorted(
+		# 	[
+		# 		(document, idf_sum) 
+		# 		for document, idf_sum in doc_to_idf.items()
+		# 	],
+		# 	key=lambda x: x[1],
+		# 	reverse=True
+		# )
+		# # documents_idf_sum = documents_idf_sum[:1_000_000]
+		# print(json.dumps(documents_idf_sum[:10], indent=4))
+		# documents = [document for document, _ in documents_idf_sum]
+		# return documents
 	
 
 	def get_document_paths_from_documents(self, documents: List[str]):
@@ -618,11 +731,11 @@ class TF_IDF(BagOfWords):
 			# the article text.
 			document_sha1 = result[1]
 			document, sha1 = os.path.basename(document_sha1).split(".xml")
-			document += ".xml"
-			text = load_article_text(document, [sha1])
+			document = os.path.join(self.documents_folder, document + ".xml")
+			text = load_article_text(document, [sha1])[0]
 			
 			# Append the results.
-			full_result = result + tuple([text, [0, len(text)]])
+			full_result = result + [text, [0, len(text)]]
 
 			# Insert the item into the list from the front.
 			sorted_rankings.insert(0, full_result)
@@ -678,10 +791,10 @@ class TF_IDF(BagOfWords):
 			for file in self.doc_to_word_files
 			if os.path.basename(file).replace(self.extension, ".xml") in list(file_to_article.keys())
 		]
-		print("File to articles")
-		print(json.dumps(file_to_article, indent=4))
-		print(f"Matching files")
-		print(json.dumps(filtered_files, indent=4))
+		# print("File to articles")
+		# print(json.dumps(file_to_article, indent=4))
+		# print(f"Matching files")
+		# print(json.dumps(filtered_files, indent=4))
 
 		# NOTE:
 		# Heapq in use is a max-heap. This is implemented by 
@@ -696,10 +809,18 @@ class TF_IDF(BagOfWords):
 			# Load the doc to word frequency mappings from file.
 			doc_to_words = load_data_file(file, self.use_json)
 
+			# Compute the intersection of the documents passed in from
+			# arguments and the current list of documents in the file.
+			document_intersect = set(documents).intersection(
+				list(doc_to_words.keys())
+			)
+
 			# Iterate through each document.
 			# for doc in doc_to_words:
 			# Iterate through the documents provided from arguments.
-			for doc in documents:
+			# for doc in documents:
+			# Iterate through the document intersection.
+			for doc in list(document_intersect):
 				# Extract the document word frequencies.
 				word_freq_map = doc_to_words[doc]
 
@@ -757,12 +878,16 @@ class TF_IDF(BagOfWords):
 					# tuple.
 					heapq.heappushpop(
 						corpus_tfidf_heap,
-						tuple([doc_cos_score, doc, doc_tfidf])
+						# tuple([doc_cos_score, doc, doc_tfidf])
+						# [doc_cos_score, doc, doc_tfidf]
+						[doc_cos_score, doc]
 					)
 				else:
 					heapq.heappush(
 						corpus_tfidf_heap,
-						tuple([doc_cos_score, doc, doc_tfidf])
+						# tuple([doc_cos_score, doc, doc_tfidf]) # Tuple doesnt support modification
+						# [doc_cos_score, doc, doc_tfidf] # Results in issues unpacking list in preint_results()
+						[doc_cos_score, doc]
 					)
 
 		# Return the corpus TF-IDF.
@@ -782,7 +907,6 @@ class BM25(BagOfWords):
 			self.avg_corpus_len = self.compute_avg_corpus_size()
 		self.k1 = k1
 		self.b = b
-		pass
 
 
 	def compute_avg_corpus_size(self) -> float:
@@ -851,11 +975,11 @@ class BM25(BagOfWords):
 			# the article text.
 			document_sha1 = result[1]
 			document, sha1 = os.path.basename(document_sha1).split(".xml")
-			document += ".xml"
-			text = load_article_text(document, [sha1])
+			document = os.path.join(self.documents_folder, document + ".xml")
+			text = load_article_text(document, [sha1])[0]
 			
 			# Append the results.
-			full_result = result + tuple([text, [0, len(text)]])
+			full_result = result + [text, [0, len(text)]]
 
 			# Insert the item into the list from the end (append).
 			sorted_rankings.append(full_result)
@@ -918,9 +1042,14 @@ class BM25(BagOfWords):
 			# Load the doc to word frequency mappings from file.
 			doc_to_words = load_data_file(file, self.use_json)
 
+			document_intersect = set(documents).intersection(
+				list(doc_to_words.keys())
+			)
+
 			# Iterate through each document.
 			# for doc in doc_to_words:
-			for doc in documents:
+			# for doc in documents:
+			for doc in document_intersect:
 				# Initialize the BM25 score for the document.
 				bm25_score = 0.0
 
