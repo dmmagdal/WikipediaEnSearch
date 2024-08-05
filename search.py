@@ -954,6 +954,7 @@ class BM25(BagOfWords):
 
 		# Preprocess the search query to a bag of words.
 		words = bow_preprocessing(query, False)
+		words = words[0] # unpack return tuple.
 
 		# Isolate a list of files/documents to look through.
 		target_documents = self.get_documents_from_trie(words)
