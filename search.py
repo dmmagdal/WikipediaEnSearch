@@ -1025,7 +1025,7 @@ class BM25(BagOfWords):
 		filtered_files = [
 			file 
 			for file in self.doc_to_word_files
-			if os.path.basename(file) in list(file_to_article.keys())
+			if os.path.basename(file).replace(self.extension, ".xml") in list(file_to_article.keys())
 		]
 
 		# NOTE:
@@ -1095,12 +1095,14 @@ class BM25(BagOfWords):
 					# heap to make way for the next tuple.
 					heapq.heappushpop(
 						corpus_bm25_heap,
-						tuple([bm25_score, doc])
+						# tuple([bm25_score, doc])
+						[bm25_score, doc]
 					)
 				else:
 					heapq.heappush(
 						corpus_bm25_heap,
-						tuple([bm25_score, doc])
+						# tuple([bm25_score, doc])
+						[bm25_score, doc]
 					)
 
 		# Return the corpus BM25 rankings.
