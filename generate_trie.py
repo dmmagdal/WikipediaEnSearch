@@ -689,8 +689,8 @@ def main():
 	for char in list(alpha_numerics) + ["other"]:
 		plural = "" if char in alpha_numerics else "s"
 		print(f"Processing words that start with {char} character{plural}")
-		# path = os.path.join(trie_path, char + "_trie" + extension)
-		path = os.path.join(trie_path, char + "_trie_slim" + extension)
+		path = os.path.join(trie_path, char + "_trie" + extension)
+		# path = os.path.join(trie_path, char + "_trie_slim" + extension)
 
 		# Skip if path exists.
 		if os.path.exists(path):
@@ -785,6 +785,7 @@ def main():
 		# Load character trie.
 		load_path = os.path.join(
 			trie_path, f"{char}_trie_slim" + extension
+			# trie_path, f"{char}_trie" + extension
 		)
 		loaded_trie = load_trie(load_path, args.use_json)
 		print(f"Sharding trie {load_path}")
@@ -830,7 +831,8 @@ def main():
 			# Initialize a trie for the shard
 			char_trie = TrieGPT()
 			save_path = os.path.join(
-				trie_path, f"{char}_shard_{idx + 1}_trie_slim" + extension
+				# trie_path, f"{char}_shard_{idx + 1}_trie_slim" + extension
+				trie_path, f"{char}_shard_{idx + 1}_trie" + extension
 			)
 
 			# Update shard map.
