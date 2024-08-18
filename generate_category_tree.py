@@ -14,6 +14,7 @@
 import argparse
 import gc
 import json
+import math
 import multiprocessing as mp
 import os
 from typing import List, Dict, Any, Set, Tuple
@@ -141,6 +142,50 @@ def index_documents_as_ints(d2w_files: List[str], use_json: bool = False) -> Dic
 	return doc_to_int
 
 
+def merge_mappings(results: List[List]) -> Tuple[Dict[str, Set[int]], Dict[str, Set[str]]]:
+	aggr_cat_to_doc = dict()
+	aggr_cat_to_cat = dict()
+
+	for result in results:
+		cat_to_doc, cat_to_cat = result
+
+		for key, value in cat_to_doc.items():
+			if key not in list(aggr_cat_to_doc.keys()):
+				aggr_cat_to_doc[key] = value
+			else:
+				aggr_cat_to_doc[key].update(value)
+
+		for key, value in cat_to_cat.items():
+			if key not in list(aggr_cat_to_cat.keys()):
+				aggr_cat_to_cat[key] = value
+			else:
+				aggr_cat_to_cat[key].update(value)
+	
+	return aggr_cat_to_doc, aggr_cat_to_cat
+
+
+def multiprocess_index_categories(doc_files: List[str], doc_to_int: Dict[str, int], num_proc: int) -> Tuple[Dict[str, Set[int]], Dict[str, Set[str]]]:
+	chunk_size = math.ceil(len(doc_files) / num_proc)
+	doc_files_chunks = [
+		doc_files[i:i + chunk_size]
+		for i in range(0, len(doc_files), chunk_size)
+	]
+
+	arg_list = [
+		[doc_files_chunk, doc_to_int] 
+		for doc_files_chunk in doc_files_chunks
+	]
+
+	with mp.Pool(processes=num_proc) as pool:
+		results = pool.starmap(
+			index_categories_from_documents, arg_list
+		)
+
+		cat_to_doc, cat_to_cat = merge_mappings(results)
+	
+	return cat_to_doc, cat_to_cat
+
+
 def index_categories_from_documents(doc_files: List[str], doc_to_int: Dict[str, int]) -> Tuple[Dict[str, Set[int]], Dict[str, Set[str]]]:
 	'''
 	Compute the mappings between categories and the document IDs as
@@ -158,8 +203,8 @@ def index_categories_from_documents(doc_files: List[str], doc_to_int: Dict[str, 
 	cat_to_cat = dict()
 
 	# Iterate through each document in the dataset.
-	for idx, file in enumerate(doc_files):
-		print(f"Isolating categories from {os.path.basename(file)} ({idx + 1}/{len(doc_files)})...")
+	for file in doc_files:
+		print(f"Isolating categories from {os.path.basename(file)}...")
 
 		# Load in file.
 		with open(file, "r") as f:
@@ -228,7 +273,7 @@ def index_categories_from_documents(doc_files: List[str], doc_to_int: Dict[str, 
 				# the title category in the category to category map.
 				category = title.replace("Category:", "")
 				
-				if category in cat_to_cat:
+				if category in list(cat_to_cat.keys()):
 					cat_to_cat[category].update(categories)
 				else:
 					cat_to_cat[category] = set(categories)
@@ -237,7 +282,7 @@ def index_categories_from_documents(doc_files: List[str], doc_to_int: Dict[str, 
 				# Store the article's unique document ID to each 
 				# category in the category to document (ID) map.
 				for category in categories:
-					if category in cat_to_doc:
+					if category in list(cat_to_doc.keys()):
 						cat_to_doc[category].add(document_id)
 					else:
 						cat_to_doc[category] = set([document_id])
@@ -248,7 +293,23 @@ def index_categories_from_documents(doc_files: List[str], doc_to_int: Dict[str, 
 
 
 def remove_cycles(cat_to_cat):
+	'''
+	Remove any cycles that appear in the category to category 
+		map/graph.
+	@param: cat_to_cat (Dict[str, Set[str]]) the mapping of different
+		categories to other categories in the corpus.
+	@return: Returns a mapping between categories and document IDs and
+		categories and other categories.
+	'''
 	def dfs(node, visited, rec_stack, parent=None):
+		'''
+		Run DFS.
+		@param: node (str), 
+		@param: visited (Set[str]), 
+		@param: rec_stack (Set[str]),
+		@param: parent (str),
+		@return: 
+		'''
 		visited.add(node)
 		rec_stack.add(node)
 
@@ -262,9 +323,16 @@ def remove_cycles(cat_to_cat):
 		rec_stack.remove(node)
 		return False
 	
+	visited = set()
+	rec_stack = set()
 
+	# Iterate through each node in the graph and run DFS on each one to
+	# handle any possible cycles.
+	for node in list(cat_to_cat.keys()):
+		if node not in visited:
+			dfs(node, visited, rec_stack)
 
-	pass
+	return cat_to_cat
 
 
 def main():
@@ -286,12 +354,12 @@ def main():
 	# 	action="store_true",
 	# 	help="Specify whether to restart the preprocessing from scratch. Default is false/not specified."
 	# )
-	# parser.add_argument(
-	# 	'--num_proc', 
-	# 	type=int, 
-	# 	default=1, 
-	# 	help="Number of processor cores to use for multiprocessing. Default is 1."
-	# )
+	parser.add_argument(
+		'--num_proc', 
+		type=int, 
+		default=1, 
+		help="Number of processor cores to use for multiprocessing. Default is 1."
+	)
 	parser.add_argument(
 		"--use_json",
 		action="store_true",
@@ -330,6 +398,7 @@ def main():
 		if file.endswith(extension)
 	])
 
+	# Document files.
 	file_dir = "./WikipediaEnDownload/WikipediaData"
 	doc_files = [
 		os.path.join(file_dir, file)
@@ -385,9 +454,16 @@ def main():
 
 	if not os.path.exists(cat_to_doc_path) or not os.path.exists(cat_to_cat_path):
 		print("Indexing all categories...")
-		cat_to_doc, cat_to_cat = index_categories_from_documents(
-			doc_files, doc_to_int, args.use_json
-		)
+		if args.num_proc > 1:
+			max_proc = min(mp.cpu_count(), args.num_proc)
+			
+			cat_to_doc, cat_to_cat = multiprocess_index_categories(
+				doc_files, doc_to_int, max_proc
+			)
+		else:
+			cat_to_doc, cat_to_cat = index_categories_from_documents(
+				doc_files, doc_to_int
+			)
 		cat_to_doc_str = {
 			key: [str(val) for val in value] 
 			for key, value in cat_to_doc.items()
@@ -411,8 +487,12 @@ def main():
 			key: set(value) for key, value in cat_to_cat.items()
 		}
 
-	print(f"Number of unique categories (1): {len(list(cat_to_doc.keys()))}")
-	print(f"Number of unique categories (2): {len(list(cat_to_cat.keys()))}")
+	print(f"Number of unique categories (1): {len(list(cat_to_doc.keys()))}") # 3648460 <- accurate count
+	print(f"Number of unique categories (2): {len(list(cat_to_cat.keys()))}") # 2346348
+	all_categories = []
+	for key in list(cat_to_cat.keys()):
+		all_categories += [key] + list(cat_to_cat[key])
+	print(f"Number of unique categories (3): {len(all_categories)}") # 7093743
 
 	# Remove cycles in the category to category mapping.
 	cat_to_cat = remove_cycles(cat_to_cat)
@@ -420,6 +500,17 @@ def main():
 	###################################################################
 	# BUILD/LOAD CATEGORY TO WORD FREQUENCY MAP
 	###################################################################
+
+	cat_word_freq = dict()
+	for category in tqdm(cat_to_doc):
+		# Get all documents.
+		documents = [
+			int_to_doc[document] 
+			for document in cat_to_doc[category]
+		]
+
+		# Load document word frequencies 
+		pass
 
 	###################################################################
 	# BUILD/LOAD CATEGORY TO CATEGORY GRAPH
