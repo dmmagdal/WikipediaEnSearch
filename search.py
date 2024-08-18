@@ -430,6 +430,7 @@ class BagOfWords:
 		# item in the list will be a unique string.
 		documents = set()
 		# doc_to_idf = dict()
+		idf_threshold = 1.0
 
 		import time
 
@@ -443,7 +444,7 @@ class BagOfWords:
 			# Unpack the words in the character to words dictionary.
 			char_words = char_word_dict[char]
 			# char_words = sorted(char_words)
-			# idf = self.compute_idf(char_words)
+			idf = self.compute_idf(char_words)
 
 			# Identify the list of trie shards for this character.
 			shard_files = [
@@ -459,7 +460,13 @@ class BagOfWords:
 			# Map each character trie shard to a word if applicable.
 			for shard in shard_files:
 				word_range = self.trie_shard_map[shard]
-				for word in char_words:
+				for idx, word in enumerate(char_words):
+					# Idea: Skip words with sufficiently low IDF 
+					# scores to cut back on searching for more "common"
+					# words.
+					if idf[idx] < idf_threshold:
+						continue
+
 					# From generate_trie.py: words were sorted 
 					# lexicographically. Means that this is how the
 					# checking the range should look 
