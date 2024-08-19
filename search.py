@@ -13,6 +13,7 @@ import json
 import math
 import os
 import string
+import time
 from typing import List, Dict, Tuple
 
 from bs4 import BeautifulSoup
@@ -248,6 +249,7 @@ class BagOfWords:
 		self.extension = ".json" if use_json else ".msgpack"
 		self.alpha_numerics = string.digits + string.ascii_lowercase
 		self.word_len_limit = 60
+		self.idf_threshold = 1.0
 
 		# Initialize mapping folder path and files list.
 		self.locate_and_validate_documents(bow_dir)
@@ -393,7 +395,53 @@ class BagOfWords:
 		return counter
 	
 
+	def inverted_index(self, words: List[str], index: str = "trie") -> List[str]:
+		'''
+		Pass query words to the inverted index to retrieve the list of 
+			documents to search from.
+		@param: words (List[str]), the (ordered) list of all (unique) 
+			terms to search.
+		@param: index (str), the type of inverted index to use.
+		@return: returns a list of unique relevant documents based on 
+			the inverted index used.
+		'''
+		valid_inverted_indices = [
+			"trie", "weighted_doc_idf", "word_idf_filter", 
+			"category_word2vec", "category_weighted_tfidf"
+		]
+		assert index in valid_inverted_indices, \
+			f"Inverted index type {index} did not match list of valid types: {', '.join(valid_inverted_indices)}"
+		
+		# Return the documents from the inverted index.
+		if index == "trie":
+			# Pass the words list ot the plain inverted index
+			return self.get_documents_from_trie(words)
+		elif index == "weighted_doc_idf":
+			return self.get_documents_from_trie_weighted(words)
+		elif index == "word_idf_filter":
+			# Remove words from the query based on the filter.
+			filtered_words = [
+				word for word in words
+				if self.compute_idf(word)[0] < self.idf_threshold
+			]
+
+			# Pass the filtered words list to the plain inverted index.
+			return self.get_documents_from_trie(filtered_words)
+		elif index == "category_word2vec":
+			pass
+		elif index == "ategory_weighted_tfidf":
+			pass
+	
+
 	def get_documents_from_trie(self, words: List[str]) -> List[str]:
+		'''
+		Query the trie inverted index given the query to retrieve the 
+			list of documents to search from.
+		@param: words (List[str]), the (ordered) list of all (unique) 
+			terms to search.
+		@return: returns a list of unique relevant documents based on 
+			the inverted index used.
+		'''
 		# Initialize a dictionary to group words together by their
 		# first character.
 		char_word_dict = dict()
@@ -429,10 +477,6 @@ class BagOfWords:
 		# Initialize the set of documents that will be returned. Each
 		# item in the list will be a unique string.
 		documents = set()
-		# doc_to_idf = dict()
-		idf_threshold = 1.0
-
-		import time
 
 		# Iterate through the characters in the character to word
 		# dictionary.
@@ -443,8 +487,6 @@ class BagOfWords:
 
 			# Unpack the words in the character to words dictionary.
 			char_words = char_word_dict[char]
-			# char_words = sorted(char_words)
-			idf = self.compute_idf(char_words)
 
 			# Identify the list of trie shards for this character.
 			shard_files = [
@@ -461,12 +503,6 @@ class BagOfWords:
 			for shard in shard_files:
 				word_range = self.trie_shard_map[shard]
 				for idx, word in enumerate(char_words):
-					# Idea: Skip words with sufficiently low IDF 
-					# scores to cut back on searching for more "common"
-					# words.
-					if idf[idx] < idf_threshold:
-						continue
-
 					# From generate_trie.py: words were sorted 
 					# lexicographically. Means that this is how the
 					# checking the range should look 
@@ -511,64 +547,146 @@ class BagOfWords:
 
 		# Convert the documents set to a list and return it.
 		return list(documents)
-
-			
-		# 	# Use the character to determine the filepath of the trie.
-		# 	file_base = char + "_trie" + self.extension
-		# 	filepath = os.path.join(self.trie_folder, file_base)
-
-		# 	# Verify that the filepath exists in the list.
-		# 	assert filepath in self.trie_files
-
-		# 	# Load the trie.
-		# 	trie = load_trie(filepath, self.use_json)
-		# 	gc.collect()
-
-		# 	# Search for the document ids for each word in the trie.
-		# 	for word in char_words:
-		# 		results = trie.search(word)
-		# 		word_idf = idf[char_words.index(word)]
-
-		# 		# If the results returned are not None, take the 
-		# 		# results and add them to the return documents set
-		# 		# (make sure to convert from document ids to 
-		# 		# documents).
-		# 		if results is not None:
-		# 			documents.update([
-		# 				int_to_doc[result] for result in results
-		# 			])
-		# 			print(f"Word: {word}, Num doc IDs: {len(results)}, IDF: {word_idf}")
-		# 			for document_id in results:
-		# 				document_str = int_to_doc[document_id]
-		# 				if document_str not in doc_to_idf:
-		# 					doc_to_idf[document_str] = word_idf
-		# 				else:
-		# 					doc_to_idf[document_str] += word_idf
-
-		# 	# Delete trie object and do garbage collection.
-		# 	del trie
-		# 	gc.collect()
-
-		# # Convert the documents set to a list and return it.
-		# # return list(documents)
-		# documents_idf_sum = sorted(
-		# 	[
-		# 		(document, idf_sum) 
-		# 		for document, idf_sum in doc_to_idf.items()
-		# 	],
-		# 	key=lambda x: x[1],
-		# 	reverse=True
-		# )
-		# # documents_idf_sum = documents_idf_sum[:1_000_000]
-		# print(json.dumps(documents_idf_sum[:10], indent=4))
-		# documents = [document for document, _ in documents_idf_sum]
-		# return documents
 	
 
-	def get_document_paths_from_documents(self, documents: List[str]):
+	def get_documents_from_trie_weighted(self, words: List[str]) -> List[str]:
+		'''
+		Query the trie inverted index given the query to retrieve the 
+			list of documents to search from. Documents are filtered 
+			based on their cumulative weights from the word IDFs.
+		@param: words (List[str]), the (ordered) list of all (unique) 
+			terms to search.
+		@return: returns a list of unique relevant documents based on 
+			the inverted index used.
+		'''
+		# Initialize a dictionary to group words together by their
+		# first character.
+		char_word_dict = dict()
 
+		# Load the document id to documents mappings. Convert key back 
+		# to int for document id to documents map.
+		int_to_doc = load_data_file(
+			self.int_to_doc_file, self.use_json
+		)
+		int_to_doc = {
+			int(key): value for key, value in int_to_doc.items()
+		}
+
+		# Iterate through each word in the query words list.
+		for word in words:
+			# Isolate the first character in the word.
+			word_char = word[0]
+
+			# Reset the char variable if it is not an alphanumeric.
+			if word_char not in self.alpha_numerics:
+				word_char = "other"
+
+			# Verify that the word is within the set word length limit.
+			# Will skip the word otherwise.
+			if len(word) <= self.word_len_limit:
+				# Store the word to the character to word dictionary.
+				if word_char in list(char_word_dict.keys()):
+					char_word_dict[word_char].append(word)
+				else:
+					char_word_dict[word_char] = [word]
+
+		# Initialize the mapping of documents to their respective IDF
+		# weights.
+		doc_to_idf = dict()
+
+		# Iterate through the characters in the character to word
+		# dictionary.
+		for char in sorted(list(char_word_dict.keys())):
+			# Reset the char variable if it is not an alphanumeric.
+			if char not in self.alpha_numerics:
+				char = "other"
+
+			# Unpack the words in the character to words dictionary.
+			char_words = char_word_dict[char]
+			idf = self.compute_idf(char_words)
+
+			# Identify the list of trie shards for this character.
+			shard_files = [
+				shard_path 
+				for shard_path in list(self.trie_shard_map.keys())
+				if os.path.basename(shard_path).startswith(f"{char}_shard") and \
+					shard_path.endswith(self.extension)
+			]
+
+			# Initialize a map of character trie shards to words.
+			shard_to_words = dict()
+
+			# Map each character trie shard to a word if applicable.
+			for shard in shard_files:
+				word_range = self.trie_shard_map[shard]
+				for idx, word in enumerate(char_words):
+					# From generate_trie.py: words were sorted 
+					# lexicographically. Means that this is how the
+					# checking the range should look 
+					# (small <= word <= large).
+					if word_range[0] <= word <= word_range[-1]:
+						if shard in list(shard_to_words.keys()):
+							shard_to_words[shard].append(word)
+						else:
+							shard_to_words[shard] = [word]
+
+			# Iterate through all character trie shards that map to at
+			# least one word.
+			for shard in list(shard_to_words.keys()):
+				# Load the words that map to the trie shard.
+				print(f"Loading from trie shard {shard}")
+				search_words = shard_to_words[shard]
+
+				# Load the trie shard.
+				trie = load_trie(shard, self.use_json)
+
+				# Iterate through each word. Update the document to IDF
+				# weight mappings if the results returned from the trie
+				# are valid (not None).
+				for word in search_words:
+					results = trie.search(word)
+					if results is not None:
+						for result in results:
+							document = int_to_doc[result]
+							idf_value = idf[char_words.index(word)]
+							if document in list(doc_to_idf.keys()):
+								doc_to_idf[document] += idf_value
+							else:
+								doc_to_idf[document] = idf_value
+
+				# Memory cleanup.
+				del trie
+				gc.collect()
+
+			# Memory cleanup.
+			del shard_files
+			del shard_to_words
+			gc.collect()
+
+		# Filter out documents with an IDF weight below the set 
+		# threshold. Return the list of documents.
+		documents = [
+			doc for doc, idf in doc_to_idf.items() 
+			if idf > self.idf_threshold
+		]
+		return documents
+
+
+	def get_document_paths_from_documents(self, documents: List[str]) -> Dict[str, List[str]]:
+		'''
+		Given a document list (each document is a file + article hash),
+			return a dictionary mapping the full path of all unique 
+			files to the expected article hashes within each file.
+		@param: documents (List[str]), the list of all documents that
+			were returned by the inverted index.
+		@return: returns a dictionary mapping all files to the 
+			respective article hashes within each file.
+		'''
+		# Initialize dictionary mapping each file to the list of 
+		# expected hashes.
 		file_article_dict = dict()
 
+		# Isolate directory path and basename of file.
 		basenames = [
 			(os.path.dirname(doc), os.path.basename(doc))
 			for doc in documents
@@ -709,7 +827,8 @@ class TF_IDF(BagOfWords):
 
 		# Isolate a list of files/documents to look through.
 		words = sorted(words)
-		target_documents = self.get_documents_from_trie(words)
+		# target_documents = self.get_documents_from_trie(words)
+		target_documents = self.inverted_index(words, "word_idf_filter")
 		print("Isolated documents from tries.")
 		print(json.dumps(target_documents[:10], indent=4))
 		print(len(target_documents))
@@ -964,7 +1083,8 @@ class BM25(BagOfWords):
 		words = words[0] # unpack return tuple.
 
 		# Isolate a list of files/documents to look through.
-		target_documents = self.get_documents_from_trie(words)
+		# target_documents = self.get_documents_from_trie(words)
+		target_documents = self.inverted_index(words, index="word_idf_filter")
 
 		# Compute the BM25 for the corpus.
 		corpus_bm25 = self.compute_bm25(
