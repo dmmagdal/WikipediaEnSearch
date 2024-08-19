@@ -262,7 +262,7 @@ def index_categories_from_documents(doc_files: List[str], doc_to_int: Dict[str, 
 			# Append those categories to the list.
 			for split in text_splits:
 				if split.startswith("[[Category:") and split.endswith("]]"):
-					category = split.replace("[[Category:", "")[:-2]
+					category = split.replace("[[Category:", "")[:-2].strip()
 					categories.append(category)
 
 			# Update the respective mapping depending on the type of
@@ -487,15 +487,16 @@ def main():
 			key: set(value) for key, value in cat_to_cat.items()
 		}
 
-	print(f"Number of unique categories (1): {len(list(cat_to_doc.keys()))}") # 3648460 <- accurate count
+	print(f"Number of unique categories (1): {len(list(cat_to_doc.keys()))}") # 3648460
 	print(f"Number of unique categories (2): {len(list(cat_to_cat.keys()))}") # 2346348
 	all_categories = []
 	for key in list(cat_to_cat.keys()):
 		all_categories += [key] + list(cat_to_cat[key])
-	print(f"Number of unique categories (3): {len(all_categories)}") # 7093743
+	print(f"Number of unique categories (3): {len(set(all_categories))}") #  <- accurate count (7093743 with duplicates) 
 
 	# Remove cycles in the category to category mapping.
-	cat_to_cat = remove_cycles(cat_to_cat)
+	cat_to_cat_new = remove_cycles(cat_to_cat)
+	print(cat_to_cat_new == cat_to_cat)
 
 	###################################################################
 	# BUILD/LOAD CATEGORY TO WORD FREQUENCY MAP
