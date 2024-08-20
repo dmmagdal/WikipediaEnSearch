@@ -355,6 +355,11 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Sentdex [youtube video](https://youtu.be/mXuEoqK4bEc?si=igqgb5OFgw7hebEE)
      - Sentdex tutorial [blog post](https://pythonprogramming.net/introduction-and-basics-cython-tutorial/)
      - LinkedIn [blog post](https://www.linkedin.com/pulse/improving-python-performance-cython-harold-kasperink-yttse/)
+     - Peter Baumgartner [blog post](https://www.peterbaumgartner.com/blog/intro-to-just-enough-cython-to-be-useful/)
+     - Python Bindings: Calling C or C++ From Python ([Real Python](https://realpython.com/python-bindings-overview/))
+         - Note: Disable JS to avoid the sign-in popup.
+         - Associated [repo](https://github.com/realpython/materials/tree/master/python-bindings)
+     - Learn Cython [pdf](https://github.com/GeorgeQLe/Textbooks-and-Papers/blob/master/%5BPython%5D%20Learning%20Cython%20Programming.pdf)
  - LanceDB
      - Quick Start [documentation](https://lancedb.github.io/lancedb/basic/)
      - Full Text Search [documentation](https://lancedb.github.io/lancedb/fts/)
@@ -364,8 +369,15 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Storage [docoumentation](https://lancedb.github.io/lancedb/concepts/storage/)
          - Primarily for local disk storage
      - FAQs [documentation](https://lancedb.github.io/lancedb/faq/)
+ - Milvus [documentation](https://milvus.io/docs/insert-update-delete.md)
  - Cosine Similarity
      - Wikipedia [article](https://en.wikipedia.org/wiki/Cosine_similarity)
  - TF-IDF
      - Document Similarity Search Examples in Python (LinkedIn [blog post](https://www.linkedin.com/pulse/document-similarity-examples-python-rany-elhousieny-phd%E1%B4%AC%E1%B4%AE%E1%B4%B0-0i5lc/))
      - Understanding TF-IDF [geeksforgeeks](https://www.geeksforgeeks.org/understanding-tf-idf-term-frequency-inverse-document-frequency/)
+     - What is inverse document frequency [blog post](https://kavita-ganesan.com/what-is-inverse-document-frequency/)
+ - msgpack main [page](https://msgpack.org/index.html)
+ - DrDub Semantic Search [repo](https://github.com/Textualization/php-semantic-search)
+ - Tries
+     - Trie data structure [geeksforgeeks](https://www.geeksforgeeks.org/introduction-to-trie-data-structure-and-algorithm-tutorials/)
+     - Trie data structure | Insert and Search [geeksforgeeks](https://www.geeksforgeeks.org/trie-insert-and-search/)
