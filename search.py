@@ -431,6 +431,8 @@ class BagOfWords:
 			pass
 		elif index == "ategory_weighted_tfidf":
 			pass
+
+		return []
 	
 
 	def get_documents_from_trie(self, words: List[str]) -> List[str]:
