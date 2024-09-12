@@ -303,8 +303,81 @@ def write_data_file(path: str, data: Dict, use_json: bool = False) -> None:
 		write_data_to_msgpack(path, data)
 
 
-def compute_idf(doc_to_word_files: List[str], word_to_doc_files: List[str], idf_metadata_path: str) -> None:
-	pass
+def get_number_of_documents(doc_to_word_files: List[str], use_json: bool = False) -> int:
+		'''
+		Count the number of documents recorded in the corpus.
+		@param: doc_to_word_files (List[str]), the list of all 
+			document to word frequency paths that will be used to take
+			inventory of the number of documents in the corpus, 
+		@param: use_json (bool), whether to read the data file from a 
+			JSON or msgpack (default is False).
+		@return, returns the number of documents in the corpus.
+		'''
+		# NOTE:
+		# This does not take into account filtering articles that are 
+		# "redirect" or "category articles". Can make this a TODO item
+		# for later.
+
+		# Initialize the counter to 0.
+		counter = 0
+
+		# Iterate through each file in the documents to words map 
+		# files.
+		for file in tqdm(doc_to_word_files):
+			# Load the data from the file and increment the counter by
+			# the number of documents in each file.
+			doc_to_words = load_data_file(file, use_json)
+			counter += len(list(doc_to_words.keys()))
+		
+		# Return the count.
+		return counter
+
+
+def compute_idf(word_to_doc_files: List[str], idf_metadata_path: str, corpus_size: int, use_json: bool = False) -> None:
+	'''
+		Count the number of documents recorded in the corpus.
+		@param: word_to_doc_files (List[str]), the list of paths for
+			all the word to document mapping files for each text file.
+		@param: idf_metadata_path (str), the path to where the IDF 
+			metadata is stored.
+		@param: corpus_size (int), the number of documents that exist 
+			in the corpus.
+		@param: use_json (bool), whether to read the data file from a 
+			JSON or msgpack (default is False).
+		@return, returns nothing.
+	'''
+	# Aggregate the word count across all documents.
+	word_count = dict()
+	for word_to_doc_file in tqdm(word_to_doc_files, "Aggregating word counts"):
+		word_to_docs = load_data_file(word_to_doc_file, use_json=use_json)
+		for word in list(word_to_docs.keys()):
+			if word not in list(word_count.keys()):
+				word_count[word] = word_to_docs[word]
+			else:
+				word_count[word] += word_to_docs[word]
+
+	# Compute the inverse documemnt frequency for all words.
+	word_idf = dict()
+	for word in tqdm(list(word_count.keys()), f"Computing IDF"):
+		word_idf[word] = math.log(corpus_size / word_count[word])
+
+	# Chunk the IDF dictionary and save it.
+	CHUNK_SIZE = 5_000_000
+	words = list(word_idf.keys())
+	chunks = [
+		words[i:i + CHUNK_SIZE]
+		for i in range(0, len(words), CHUNK_SIZE)
+	]
+	os.makedirs(idf_metadata_path, exist_ok=True)
+	extension = ".json" if use_json else ".msgpack"
+
+	for idx, chunk in enumerate(chunks):
+		basename = f"idf_{idx + 1}{extension}"
+		path = os.path.join(idf_metadata_path, basename)
+		chunk_shard = {word: word_idf[word] for word in chunk}
+		write_data_file(path, chunk_shard, use_json)
+
+	return
 
 
 def build_document_tries(file: str, doc_to_word_file: str, trie_metadata_path: str, limit: int = 60, use_json: bool = False) -> None:
@@ -487,9 +560,22 @@ def build_document_tries(file: str, doc_to_word_file: str, trie_metadata_path: s
 
 
 def build_inverted_index(files: List[str], d2w_data_files: List[str], trie_metadata_path: str, limit: int = 60, use_json: bool = False) -> None:
-	
-	for idx, file in tqdm(enumerate(files), total=len(files)):
-	# for idx, file in enumerate(files):
+	'''
+	Build the inverted index for all specified Wikipedia data files.
+	@param: files (List[str]), the paths of the data file (containing 
+		wikipedia data) that is to be processed.
+	@param: d2w_data_files (List[str]), the paths of the document to 
+		word frequency mapings that correspond to the files.
+	@param: trie_metadata_path (str), the path for the trie metadata 
+		corresponding to the files.
+	@param: limit (int), the maximum number of characters/string length
+		for any word in the articles contained in the file (default is
+		60 characters).
+	@param: use_json (bool), whether to read/write to/from a JSON or
+		msgpack file (default is False).
+	@return: returns nothing.
+	'''
+	for idx, file in enumerate(files):
 		# Isolate the basename of the file and the corresponding
 		# doc to words file.
 		basename = os.path.basename(file).replace(".xml", "")
@@ -532,6 +618,12 @@ def main():
 		help="Number of processor cores to use for multiprocessing. Default is 1."
 	)
 	parser.add_argument(
+		"--limit",
+		type=int, 
+		default=60, 
+		help="Max number of characters per word. Default is 60."
+	)
+	parser.add_argument(
 		"--use_json",
 		action="store_true",
 		help="Specify whether to load and write metadata to/from JSON files. Default is false/not specified."
@@ -545,12 +637,6 @@ def main():
 		"--trie",
 		action="store_true",
 		help="Specify whether to precompute and cache the inverted index tries for every file in the Wikipedia data. Default is false/not specified."
-	)
-	parser.add_argument(
-		"--limit",
-		type=int, 
-		default=60, 
-		help="Max number of characters per word. Default is 60."
 	)
 	args = parser.parse_args()
 
@@ -672,7 +758,36 @@ def main():
 	# INVERSE DOCUMENT FREQUENCY
 	###################################################################
 	if args.idf:
-		compute_idf(d2w_files, w2d_files, idf_metadata_path)
+		# NOTE:
+		# No real good way to parallelize with multiprocessing. Should
+		# be relatively alright with just using single processor for 
+		# this part.
+
+		# Compute the corpus size if needed.
+		corpus_size = 0
+		corpus_size_1 = config["bm25_config"]["corpus_size"]
+		corpus_size_2 = config["tf-idf_config"]["corpus_size"]
+		if corpus_size_1 != corpus_size_2 or corpus_size_1 == 0:
+			corpus_size = get_number_of_documents(
+				d2w_data_files, use_json=args.use_json
+			)
+
+			# Update config and save.
+			config["bm25_config"]["corpus_size"] = corpus_size
+			config["tf-idf_config"]["corpus_size"] = corpus_size
+			with open("config.json", "w+") as f:
+				json.dump(config, f, indent=4)
+		else:
+			corpus_size = corpus_size_1
+
+		assert corpus_size != 0, "Corpus size (required for IDF computation) should be non-zero"
+
+		# Compute and save the inverse document frequency of all words
+		# in the corpus.
+		compute_idf(
+			w2d_files, idf_metadata_path, corpus_size, 
+			use_json=args.use_json
+		)
 
 	###################################################################
 	# INVERTED INDEX TRIES
@@ -705,31 +820,10 @@ def main():
 			# Distribute the tasks around the functions (no need to
 			# aggregate results because the function returns nothing).
 			pool.starmap(build_inverted_index, arg_list)
-
-		# for idx, file in tqdm(enumerate(files), total=len(files)):
-		# 	# Isolate the basename of the file and the corresponding
-		# 	# doc to words file.
-		# 	basename = os.path.basename(file).replace(".xml", "")
-		# 	d2w_file = d2w_data_files[idx]
-		# 	trie_folder_path = os.path.join(
-		# 		trie_metadata_path, basename
-		# 	)
-
-		# 	# Build the inverted index tries from the file.
-		# 	build_document_tries(
-		# 		file, d2w_file, trie_folder_path, 
-		# 		use_json=args.use_json
-		# 	)
-
-
-		# build_inverted_index(
-		# 	files, d2w_data_files, trie_metadata_path, 
-		# 	use_json=args.use_json
-		# )
 		
 		# NOTE:
 		# Single processor on server looks like it will take around 36
-		# hours to complete.
+		# (to maybe 48) hours to complete.
 
 	# Exit the program.
 	exit(0)
