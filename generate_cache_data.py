@@ -307,12 +307,23 @@ def compute_idf(doc_to_word_files: List[str], word_to_doc_files: List[str], idf_
 	pass
 
 
-def build_trie() -> None:
-	pass
-
-
 def build_document_tries(file: str, doc_to_word_file: str, trie_metadata_path: str, limit: int = 60, use_json: bool = False) -> None:
-
+	'''
+	Process the wikipedia articles from the file and create the 
+		inverted index tries for that file.
+	@param: file (str), the path of the data file (containing wikipedia
+		data) that is to be loaded.
+	@param: doc_to_word_path (str), the path of the document to word 
+		frequency mapings that correspond to the file.
+	@param: trie_metadata_path (str), the path for the trie metadata 
+		corresponding to the file.
+	@param: limit (int), the maximum number of characters/string length
+		for any word in the articles contained in the file (default is
+		60 characters).
+	@param: use_json (bool), whether to read/write to/from a JSON or
+		msgpack file (default is False).
+	@return: returns nothing.
+	'''
 	###################################################################
 	# Load Wikipedia Text Data
 	###################################################################
@@ -334,7 +345,7 @@ def build_document_tries(file: str, doc_to_word_file: str, trie_metadata_path: s
 
 	# Index all documents/articles that are not "redirect" or 
 	# "category" documents/articles.
-	for page in pages:
+	for page in tqdm(pages, f"Parsing text articles"):
 		###############################################################
 		# Extract article SHASUM
 		###############################################################
@@ -372,7 +383,7 @@ def build_document_tries(file: str, doc_to_word_file: str, trie_metadata_path: s
 
 		# Verify that the title data is in the article (all articles
 		# should have a title tag).
-		assert title is not None
+		assert title_tag is not None
 
 		# Extract the text from each tag.
 		title = title_tag.get_text()
@@ -397,18 +408,6 @@ def build_document_tries(file: str, doc_to_word_file: str, trie_metadata_path: s
 		doc_to_int[file_hash] = document_id
 		int_to_doc[str(document_id)] = file_hash
 
-	# Save document to document ID and inverse mappings.
-	write_data_file(
-		os.path.join(trie_metadata_path, f"doc_to_int{extension}"),
-		doc_to_int,
-		use_json
-	)
-	write_data_file(
-		os.path.join(trie_metadata_path, f"int_to_doc{extension}"),
-		int_to_doc,
-		use_json
-	)
-
 	# Clean up memory.
 	del raw_text
 	del soup
@@ -422,23 +421,31 @@ def build_document_tries(file: str, doc_to_word_file: str, trie_metadata_path: s
 	# Initialize path to trie.
 	os.makedirs(trie_metadata_path, exist_ok=True)
 
+	# Save document to document ID and inverse mappings.
+	write_data_file(
+		os.path.join(trie_metadata_path, f"doc_to_int{extension}"),
+		doc_to_int,
+		use_json
+	)
+	write_data_file(
+		os.path.join(trie_metadata_path, f"int_to_doc{extension}"),
+		int_to_doc,
+		use_json
+	)
+
 	# Open doc_to_word file and filter out all documents/articles not 
 	# in the index.
 	doc_to_words = load_data_file(doc_to_word_file, use_json)
-	doc_to_words = {
-		key: value for key, value in doc_to_words.items()
-		if key not in list(doc_to_int.keys())
-	}
 
 	# Group the words via their starting character.
 	alpha_numerics = string.digits + string.ascii_lowercase
 
 	# Build and save tries for each starting character for the file.
-	for char in list(alpha_numerics) + ["other"]:
+	for char in tqdm(list(alpha_numerics) + ["other"], f"Building inverted index tries"):
 		# Initialize a trie for the starting word character.
 		character_trie = TrieGPT()
 
-		for doc in list(doc_to_words.keys()):
+		for doc in list(doc_to_int.keys()):
 			# Isolate words from the document. Filter out words that
 			# exceed the defined character/string length limit.
 			words = [
@@ -467,11 +474,36 @@ def build_document_tries(file: str, doc_to_word_file: str, trie_metadata_path: s
 		)
 		save_trie(character_trie, path, use_json)
 
-	# Clear memory.
+		# Clean up memory.
+		del character_trie
+		gc.collect()
+
+	# Clean up memory.
 	del doc_to_words
 	del doc_to_int
 	del int_to_doc
 	gc.collect()
+	return
+
+
+def build_inverted_index(files: List[str], d2w_data_files: List[str], trie_metadata_path: str, limit: int = 60, use_json: bool = False) -> None:
+	
+	for idx, file in tqdm(enumerate(files), total=len(files)):
+	# for idx, file in enumerate(files):
+		# Isolate the basename of the file and the corresponding
+		# doc to words file.
+		basename = os.path.basename(file).replace(".xml", "")
+		d2w_file = d2w_data_files[idx]
+		trie_folder_path = os.path.join(
+			trie_metadata_path, basename
+		)
+
+		# Build the inverted index tries from the file.
+		build_document_tries(
+			file, d2w_file, trie_folder_path, 
+			limit=limit, use_json=use_json
+		)
+	
 	return
 
 
@@ -513,6 +545,12 @@ def main():
 		"--trie",
 		action="store_true",
 		help="Specify whether to precompute and cache the inverted index tries for every file in the Wikipedia data. Default is false/not specified."
+	)
+	parser.add_argument(
+		"--limit",
+		type=int, 
+		default=60, 
+		help="Max number of characters per word. Default is 60."
 	)
 	args = parser.parse_args()
 
@@ -640,13 +678,58 @@ def main():
 	# INVERTED INDEX TRIES
 	###################################################################
 	if args.trie:
-		for idx, file in tqdm(enumerate(files)):
-			basename = os.path.basename(file).replace(".xml", "")
-			d2w_file = d2w_files[idx]
-			trie_folder_path = os.path.join(
-				trie_metadata_path, basename
-			)
-			build_document_tries(file, d2w_file, trie_folder_path)
+		# Determine the number of processors to use.
+		num_proc = min(args.num_proc, mp.cpu_count())
+
+		# Break down the list of pages into chunks.
+		chunk_size = math.ceil(len(files) / num_proc)
+		chunks = [
+			(files[i:i + chunk_size], d2w_data_files[i:i + chunk_size]) 
+			for i in range(0, len(files), chunk_size)
+		]
+
+		# Define the arguments list.
+		arg_list = [
+			(
+				files_chunk, 
+				d2w_data_files_chunk, 
+				trie_metadata_path, 
+				args.limit, 
+				args.use_json
+			) 
+			for files_chunk, d2w_data_files_chunk in chunks
+		]
+
+		# Distribute the arguments among the pool of processes.
+		with mp.Pool(processes=num_proc) as pool:
+			# Distribute the tasks around the functions (no need to
+			# aggregate results because the function returns nothing).
+			pool.starmap(build_inverted_index, arg_list)
+
+		# for idx, file in tqdm(enumerate(files), total=len(files)):
+		# 	# Isolate the basename of the file and the corresponding
+		# 	# doc to words file.
+		# 	basename = os.path.basename(file).replace(".xml", "")
+		# 	d2w_file = d2w_data_files[idx]
+		# 	trie_folder_path = os.path.join(
+		# 		trie_metadata_path, basename
+		# 	)
+
+		# 	# Build the inverted index tries from the file.
+		# 	build_document_tries(
+		# 		file, d2w_file, trie_folder_path, 
+		# 		use_json=args.use_json
+		# 	)
+
+
+		# build_inverted_index(
+		# 	files, d2w_data_files, trie_metadata_path, 
+		# 	use_json=args.use_json
+		# )
+		
+		# NOTE:
+		# Single processor on server looks like it will take around 36
+		# hours to complete.
 
 	# Exit the program.
 	exit(0)
