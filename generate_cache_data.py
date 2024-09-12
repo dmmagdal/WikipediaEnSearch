@@ -823,7 +823,8 @@ def main():
 		
 		# NOTE:
 		# Single processor on server looks like it will take around 36
-		# (to maybe 48) hours to complete.
+		# (to maybe 48) hours to complete. Ran with 8 cores and it took
+		# around 5 hours.
 
 	# Exit the program.
 	exit(0)
