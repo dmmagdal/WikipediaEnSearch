@@ -784,7 +784,23 @@ class TF_IDF(BagOfWords):
 		# Isolate a list of files/documents to look through.
 		words = sorted(words)
 
-		num_workers = 32
+		# num_workers used:
+		# 8 -> 
+		# 16 -> 
+		# 32 -> OOM on macbook (capped at around 15 GB -> includes swap/cache)
+		# NOTE:
+		# Number of threads seems to be gated by hardware (memory). The
+		# largest trie bundle is 417MB and 389MB for the doc to words
+		# mapping. This means that for any thread, the memory overhead 
+		# is at around 1GB. Fewer threads means less 
+		# parallelization/concurrency BUT since this is a hardware 
+		# constraint, I've already pushed optimization as far as I can
+		# (with the exception of converting to rust).
+		# TODO:
+		# Add num_workers as an __init__() argument for the BagOfWords
+		# class and set it in the config.json.
+
+		num_workers = 8
 		chunk_size = math.ceil(len(self.doc_to_word_files) / num_workers)
 		file_chunks = [
 			self.doc_to_word_files[i:i + chunk_size]
@@ -988,7 +1004,8 @@ class TF_IDF(BagOfWords):
 
 			# Load doc to word frequency mappings for the file.
 			doc_to_words = load_data_file(
-				os.path.join(self.doc_to_word_folder, basename),
+				os.path.join(self.doc_to_word_folder, 
+				f"{basename}{self.extension}"),
 				self.use_json
 			)
 
@@ -998,6 +1015,7 @@ class TF_IDF(BagOfWords):
 				list(doc_to_words.keys())
 			)
 			print(f"Thread doc interstection {len(document_intersect)}")
+			print(f"local and intersection match: {len(local_documents) == len(document_intersect)}")
 
 			for doc in list(document_intersect):
 			# for doc in local_documents:
