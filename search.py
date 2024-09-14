@@ -328,8 +328,7 @@ class BagOfWords:
 			os.path.join(self.idf_folder, file)
 			for file in os.listdir(self.idf_folder)
 			if file.endswith(self.extension)
-		]f.trie_folder, "shard_map" + self.extension
-		# )
+		]
 		self.int_to_doc_file = os.path.join(
 			self.trie_folder, doc_id_map_files[1]
 		)
@@ -805,18 +804,21 @@ class TF_IDF(BagOfWords):
 			
 			for result in results:
 				while len(result) > 0:
+					result_item = result.pop()
+					if result_item in corpus_tfidf:
+						continue
 					if max_results != -1 and len(corpus_tfidf) >= max_results:
 						# Pushpop the highest (cosine similarity) value
 						# tuple from the heap to make way for the next
 						# tuple.
 						heapq.heappushpop(
 							corpus_tfidf,
-							result.pop()
+							result_item
 						)
 					else:
 						heapq.heappush(
 							corpus_tfidf,
-							result.pop()
+							result_item
 						)
 
 		# target_documents = self.get_documents_from_trie(words)
@@ -864,14 +866,17 @@ class TF_IDF(BagOfWords):
 
 	def file_search(self, doc_to_word_files, words, word_freq, word_idfs, max_results):
 		basenames = [
-			os.path.basename(file) for file in doc_to_word_files
+			os.path.basename(file).replace(self.extension, "") 
+			for file in doc_to_word_files
 		]
 		trie_paths = [
 			os.path.join(self.trie_folder, folder) 
 			for folder in os.listdir(self.trie_folder)
-			if os.path.isdir(folder) and folder in basenames
+			if os.path.isdir(os.path.join(self.trie_folder, folder)) and folder in basenames
 		]
+		assert len(basenames) == len(trie_paths)
 
+		# Stack heap for the search.
 		stack_heap = list()
 		heapq.heapify(stack_heap)
 
@@ -921,17 +926,6 @@ class TF_IDF(BagOfWords):
 					else:
 						char_word_dict[word_char] = [word]
 
-			# Isolate trie files.
-			# document_mappings = [
-			# 	f"doc_to_int{self.extension}", 
-			# 	f"int_to_doc{self.extension}"
-			# ]
-			# tries = [
-			# 	# os.path.join(trie_path, file)
-			# 	file for file in trie_contents
-			# 	if file.endswith(self.extension) and file not in document_mappings
-			# ]
-
 			# Iterate through the characters in the character to word
 			# dictionary.
 			for char in sorted(list(char_word_dict.keys())):
@@ -944,16 +938,15 @@ class TF_IDF(BagOfWords):
 
 				# Identify the trie for this character.
 				trie_file = os.path.join(
-					self.trie_folder,
-					f"{char}_trie_slim{self.extension}"
+					trie_path, f"{char}_trie_slim{self.extension}"
 				)
 				assert os.path.exists(trie_file), f"Trie file {trie_file} was expected but not found."
 
 				# Load the trie.
-				start = time.perf_counter()
+				# start = time.perf_counter()
 				trie = load_trie(trie_file, self.use_json)
-				end = time.perf_counter()
-				print(f"Time to load shard: {(end - start):.6f} seconds")
+				# end = time.perf_counter()
+				# print(f"Time to load shard: {(end - start):.6f} seconds")
 
 				# Iterate through each word. Update the documents set
 				# if the results returned from the trie are valid (not
@@ -971,6 +964,7 @@ class TF_IDF(BagOfWords):
 
 			# Convert the documents set to a list.
 			local_documents = list(local_documents)
+			print(f"Local documents: {len(local_documents)}")
 
 			###########################################################
 			# TF-IDF Ranking
@@ -992,10 +986,7 @@ class TF_IDF(BagOfWords):
 				query_word_tf = word_freq[word] / query_total_word_count
 				query_tfidf[word_idx] = query_word_tf * word_idfs[word_idx]
 
-			# Compute file TF-IDF.
-			file_tfidf_heap = []
-
-			#
+			# Load doc to word frequency mappings for the file.
 			doc_to_words = load_data_file(
 				os.path.join(self.doc_to_word_folder, basename),
 				self.use_json
@@ -1006,8 +997,10 @@ class TF_IDF(BagOfWords):
 			document_intersect = set(local_documents).intersection(
 				list(doc_to_words.keys())
 			)
+			print(f"Thread doc interstection {len(document_intersect)}")
 
 			for doc in list(document_intersect):
+			# for doc in local_documents:
 				# Extract the document word frequencies.
 				word_freq_map = doc_to_words[doc]
 
@@ -1044,39 +1037,43 @@ class TF_IDF(BagOfWords):
 				# The heapq sorts by the first value in the tuple so 
 				# that is why the cosine similarity score is the first
 				# item in the tuple.
-				if max_results != -1 and len(file_tfidf_heap) >= max_results:
-					# Pushpop the highest (cosine similarity) value
-					# tuple from the heap to make way for the next
-					# tuple.
-					heapq.heappushpop(
-						file_tfidf_heap,
-						# tuple([doc_cos_score, doc, doc_tfidf])
-						# [doc_cos_score, doc, doc_tfidf]
-						[doc_cos_score, doc]
-					)
-				else:
-					heapq.heappush(
-						file_tfidf_heap,
-						# tuple([doc_cos_score, doc, doc_tfidf]) # Tuple doesnt support modification
-						# [doc_cos_score, doc, doc_tfidf] # Results in issues unpacking list in preint_results()
-						[doc_cos_score, doc]
-					)
-
-			while len(file_tfidf_heap) > 0:
+				# if max_results != -1 and len(file_tfidf_heap) >= max_results:
 				if max_results != -1 and len(stack_heap) >= max_results:
 					# Pushpop the highest (cosine similarity) value
 					# tuple from the heap to make way for the next
 					# tuple.
 					heapq.heappushpop(
 						stack_heap,
-						file_tfidf_heap.pop()
+						# file_tfidf_heap,
+						# tuple([doc_cos_score, doc, doc_tfidf])
+						# [doc_cos_score, doc, doc_tfidf]
+						[doc_cos_score, doc]
 					)
 				else:
 					heapq.heappush(
 						stack_heap,
-						file_tfidf_heap.pop()
+						# file_tfidf_heap,
+						# tuple([doc_cos_score, doc, doc_tfidf]) # Tuple doesnt support modification
+						# [doc_cos_score, doc, doc_tfidf] # Results in issues unpacking list in preint_results()
+						[doc_cos_score, doc]
 					)
 
+			# while len(file_tfidf_heap) > 0:
+			# 	if max_results != -1 and len(stack_heap) >= max_results:
+			# 		# Pushpop the highest (cosine similarity) value
+			# 		# tuple from the heap to make way for the next
+			# 		# tuple.
+			# 		heapq.heappushpop(
+			# 			stack_heap,
+			# 			file_tfidf_heap.pop()
+			# 		)
+			# 	else:
+			# 		heapq.heappush(
+			# 			stack_heap,
+			# 			file_tfidf_heap.pop()
+			# 		)
+
+		print(f"thread stack heap length: {len(stack_heap)}")
 		return stack_heap
 	
 
