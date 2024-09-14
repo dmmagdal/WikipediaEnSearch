@@ -5,6 +5,7 @@
 # Windows/MacOS/Linux
 
 
+import concurrent.futures
 import copy
 import gc
 import hashlib
@@ -239,9 +240,7 @@ class BagOfWords:
 		self.word_to_doc_files = None
 		self.doc_to_word_files = None
 		self.idf_files = None
-		self.trie_files = None
 		self.int_to_doc_file = None
-		self.trie_shard_map_file = None
 		self.documents_folder = "./WikipediaEnDownload/WikipediaData"
 		self.corpus_size = corpus_size	# total number of documents (articles)
 		self.srt = srt					# similarity relative threshold value
@@ -259,16 +258,10 @@ class BagOfWords:
 		initialized_variables = [
 			self.word_to_doc_folder, self.doc_to_word_folder,
 			self.word_to_doc_files, self.doc_to_word_files,
-			self.idf_files, self.trie_files, self.int_to_doc_file,
-			self.trie_shard_map_file
+			self.idf_files, self.int_to_doc_file,
 		]
 		assert None not in initialized_variables,\
 			"Some variables were not initialized properly"
-		
-		# Load the shard map.
-		self.trie_shard_map = load_data_file(
-			self.trie_shard_map_file, self.use_json
-		)
 		
 		# Compute the corpus size if the default value for the argument 
 		# is detected.
@@ -335,17 +328,8 @@ class BagOfWords:
 			os.path.join(self.idf_folder, file)
 			for file in os.listdir(self.idf_folder)
 			if file.endswith(self.extension)
-		]
-		self.trie_files = [
-			os.path.join(self.trie_folder, file)
-			for file in os.listdir(self.trie_folder)
-			if file.endswith(self.extension) and \
-				file not in doc_id_map_files and \
-				"shard" in file and "map" not in file
-		]
-		self.trie_shard_map_file = os.path.join(
-			self.trie_folder, "shard_map" + self.extension
-		)
+		]f.trie_folder, "shard_map" + self.extension
+		# )
 		self.int_to_doc_file = os.path.join(
 			self.trie_folder, doc_id_map_files[1]
 		)
@@ -363,14 +347,10 @@ class BagOfWords:
 			f"Detected document to words folder {self.doc_to_word_folder} does have not supported files"
 		assert len(self.idf_files) != 0,\
 			f"Detected word to idf folder {self.idf_folder} does have not supported files"
-		assert len(self.trie_files) != 0,\
-			f"Detected document to words folder {self.trie_folder} does have not supported files"
 		assert os.path.exists(self.int_to_doc_file),\
 			f"Required document id to document file in {self.trie_folder} does exist"
 		assert len(self.redirect_files) != 0,\
-			f"Detected redirected documents folder {self.redirect_folder} does have not supported files"		
-		assert os.path.exists(self.trie_shard_map_file),\
-			f"Required trie shard map file in {self.trie_folder} does not exist"
+			f"Detected redirected documents folder {self.redirect_folder} does have not supported files"
 
 
 	def get_number_of_documents(self) -> int:
@@ -756,29 +736,6 @@ class BagOfWords:
 			argument.
 		'''
 		# Initialize a list containing the mappings of the query words
-		# to the total count of how many articles each appears in.
-		# word_count = [0.0] * len(words)
-		# 
-		# Iterate through each file.
-		# for file in tqdm(self.word_to_doc_files):
-		# 	# Load the word to doc mappings from file.
-		# 	word_to_docs = load_data_file(file, use_json=self.use_json)
-		# 
-		# 	# Iterate through each word. Update the total count for
-		# 	# each respective word if applicable.
-		# 	for word_idx in range(len(words)):
-		# 		word = words[word_idx]
-		# 		if word in word_to_docs:
-		# 			word_count[word_idx] += word_to_docs[word]
-		# 
-		# Compute inverse document frequency for each term.
-		# return [
-		# 	math.log(self.corpus_size / word_count[word_idx])
-		# 	if word_count[word_idx] != 0.0 else 0.0
-		# 	for word_idx in range(len(words))
-		# ]
-
-		# Initialize a list containing the mappings of the query words
 		# to the IDF.
 		idf_vector = [0.0] * len(words)
 
@@ -824,24 +781,57 @@ class TF_IDF(BagOfWords):
 
 		# Preprocess the search query to a bag of words.
 		words, word_freq = bow_preprocessing(query, True)
-		print("preprocessed words.")
-		print(json.dumps(words, indent=4))
 
 		# Isolate a list of files/documents to look through.
 		words = sorted(words)
-		# target_documents = self.get_documents_from_trie(words)
-		target_documents = self.inverted_index(words, "word_idf_filter")
-		print("Isolated documents from tries.")
-		print(json.dumps(target_documents[:10], indent=4))
-		print(len(target_documents))
 
-		# Compute the TF-IDF for the corpus.
-		# _, corpus_tfidf = self.compute_tfidf(
-		# 	words, word_freq, max_results=max_results
+		num_workers = 32
+		chunk_size = math.ceil(len(self.doc_to_word_files) / num_workers)
+		file_chunks = [
+			self.doc_to_word_files[i:i + chunk_size]
+			for i in range(9, len(self.doc_to_word_files), chunk_size)
+		]
+
+		word_idfs = self.compute_idf(words)
+		print("Captured word IDFs")
+		args_list = [
+			(file_chunk, words, word_freq, word_idfs, max_results)
+			for file_chunk in file_chunks
+		]
+		corpus_tfidf = []
+		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+			print("Starting multithreaded processing")
+			results = executor.map(lambda args: self.file_search(*args), args_list)
+			
+			for result in results:
+				while len(result) > 0:
+					if max_results != -1 and len(corpus_tfidf) >= max_results:
+						# Pushpop the highest (cosine similarity) value
+						# tuple from the heap to make way for the next
+						# tuple.
+						heapq.heappushpop(
+							corpus_tfidf,
+							result.pop()
+						)
+					else:
+						heapq.heappush(
+							corpus_tfidf,
+							result.pop()
+						)
+
+		# target_documents = self.get_documents_from_trie(words)
+		# # target_documents = self.inverted_index(words, "word_idf_filter")
+		# print("Isolated documents from tries.")
+		# print(json.dumps(target_documents[:10], indent=4))
+		# print(len(target_documents))
+
+		# # Compute the TF-IDF for the corpus.
+		# # _, corpus_tfidf = self.compute_tfidf(
+		# # 	words, word_freq, max_results=max_results
+		# # )
+		# corpus_tfidf = self.compute_tfidf(
+		# 	words, word_freq, target_documents, max_results=max_results
 		# )
-		corpus_tfidf = self.compute_tfidf(
-			words, word_freq, target_documents, max_results=max_results
-		)
 
 		# The corpus TF-IDF results are stored in a max heap. Convert
 		# the structure back to a list sorted from smallest to largest
@@ -870,6 +860,224 @@ class TF_IDF(BagOfWords):
 
 		# Return the list.
 		return sorted_rankings
+	
+
+	def file_search(self, doc_to_word_files, words, word_freq, word_idfs, max_results):
+		basenames = [
+			os.path.basename(file) for file in doc_to_word_files
+		]
+		trie_paths = [
+			os.path.join(self.trie_folder, folder) 
+			for folder in os.listdir(self.trie_folder)
+			if os.path.isdir(folder) and folder in basenames
+		]
+
+		stack_heap = list()
+		heapq.heapify(stack_heap)
+
+		for trie_path in trie_paths:
+			basename = os.path.basename(trie_path)
+
+			###########################################################
+			# Inverted Index Search
+			###########################################################
+
+			# Initialize the set of documents that will be returned. 
+			# Each item in the list will be a unique string.
+			local_documents = set()
+
+			# Isolate document mapping files.
+			local_int_to_doc_path = os.path.join(
+				trie_path, f"int_to_doc{self.extension}"
+			)
+			int_to_doc = load_data_file(
+				local_int_to_doc_path, self.use_json
+			)
+
+			# Convert key back to int for document id to documents map.
+			int_to_doc = {
+				int(key): value for key, value in int_to_doc.items()
+			}
+
+			# Initialize a dictionary to group words together by their
+			# first character.
+			char_word_dict = dict()
+
+			# Iterate through each word in the query words list.
+			for word in words:
+				# Isolate the first character in the word.
+				word_char = word[0]
+
+				# Reset the char variable if it is not an alphanumeric.
+				if word_char not in self.alpha_numerics:
+					word_char = "other"
+
+				# Verify that the word is within the set word length limit.
+				# Will skip the word otherwise.
+				if len(word) <= self.word_len_limit:
+					# Store the word to the character to word dictionary.
+					if word_char in list(char_word_dict.keys()):
+						char_word_dict[word_char].append(word)
+					else:
+						char_word_dict[word_char] = [word]
+
+			# Isolate trie files.
+			# document_mappings = [
+			# 	f"doc_to_int{self.extension}", 
+			# 	f"int_to_doc{self.extension}"
+			# ]
+			# tries = [
+			# 	# os.path.join(trie_path, file)
+			# 	file for file in trie_contents
+			# 	if file.endswith(self.extension) and file not in document_mappings
+			# ]
+
+			# Iterate through the characters in the character to word
+			# dictionary.
+			for char in sorted(list(char_word_dict.keys())):
+				# Reset the char variable if it is not an alphanumeric.
+				if char not in self.alpha_numerics:
+					char = "other"
+
+				# Unpack the words in the character to words dictionary.
+				char_words = char_word_dict[char]
+
+				# Identify the trie for this character.
+				trie_file = os.path.join(
+					self.trie_folder,
+					f"{char}_trie_slim{self.extension}"
+				)
+				assert os.path.exists(trie_file), f"Trie file {trie_file} was expected but not found."
+
+				# Load the trie.
+				start = time.perf_counter()
+				trie = load_trie(trie_file, self.use_json)
+				end = time.perf_counter()
+				print(f"Time to load shard: {(end - start):.6f} seconds")
+
+				# Iterate through each word. Update the documents set
+				# if the results returned from the trie are valid (not
+				# None).
+				for word in char_words:
+					results = trie.search(word)
+					if results is not None:
+						local_documents.update([
+							int_to_doc[result] for result in results
+						])
+	
+				# Memory cleanup.
+				del trie
+				gc.collect()
+
+			# Convert the documents set to a list.
+			local_documents = list(local_documents)
+
+			###########################################################
+			# TF-IDF Ranking
+			###########################################################
+
+			# Compute the TF-IDF for the file.
+			# file_tfidf = self.compute_tfidf(
+			# 	words, word_freq, word_idf, 
+			# 	local_documents, max_results=max_results
+			# )
+
+			# Compute query TF-IDF.
+			query_total_word_count = sum(
+				[value for value in word_freq.values()]
+			)
+			query_tfidf = [0.0] * len(words)
+			for word_idx in range(len(words)):
+				word = words[word_idx]
+				query_word_tf = word_freq[word] / query_total_word_count
+				query_tfidf[word_idx] = query_word_tf * word_idfs[word_idx]
+
+			# Compute file TF-IDF.
+			file_tfidf_heap = []
+
+			#
+			doc_to_words = load_data_file(
+				os.path.join(self.doc_to_word_folder, basename),
+				self.use_json
+			)
+
+			# Compute the intersection of the documents passed in from
+			# arguments and the current list of documents in the file.
+			document_intersect = set(local_documents).intersection(
+				list(doc_to_words.keys())
+			)
+
+			for doc in list(document_intersect):
+				# Extract the document word frequencies.
+				word_freq_map = doc_to_words[doc]
+
+				# Compute the document's term frequency for each word.
+				doc_word_tf = self.compute_tf(word_freq_map, words)
+
+				# Compute document TF-IDF.
+				doc_tfidf = [
+					tf * idf 
+					for tf, idf in list(zip(doc_word_tf, word_idfs))
+				]
+
+				# Compute cosine similarity against query TF-IDF and
+				# the document TF-IDF.
+				doc_cos_score = cosine_similarity(
+					query_tfidf, doc_tfidf
+				)
+
+				# If the sparse retrieval threshold has been 
+				# initialized, verify the document cosine similarity
+				# score is within that threshold. Do not append
+				# documents to the results list if they fall under the
+				# threshold.
+				if self.srt > 0.0 and doc_cos_score > self.srt:
+					continue
+
+				# Multiply score by -1 to get inverse score. This is
+				# important since we are relying on a max heap.
+				doc_cos_score *= -1
+				
+				# Insert the document name (includes file path & 
+				# article SHA1), TF-IDF vector, and cosine similarity 
+				# score (against the query TF-IDF vector) to the heapq.
+				# The heapq sorts by the first value in the tuple so 
+				# that is why the cosine similarity score is the first
+				# item in the tuple.
+				if max_results != -1 and len(file_tfidf_heap) >= max_results:
+					# Pushpop the highest (cosine similarity) value
+					# tuple from the heap to make way for the next
+					# tuple.
+					heapq.heappushpop(
+						file_tfidf_heap,
+						# tuple([doc_cos_score, doc, doc_tfidf])
+						# [doc_cos_score, doc, doc_tfidf]
+						[doc_cos_score, doc]
+					)
+				else:
+					heapq.heappush(
+						file_tfidf_heap,
+						# tuple([doc_cos_score, doc, doc_tfidf]) # Tuple doesnt support modification
+						# [doc_cos_score, doc, doc_tfidf] # Results in issues unpacking list in preint_results()
+						[doc_cos_score, doc]
+					)
+
+			while len(file_tfidf_heap) > 0:
+				if max_results != -1 and len(stack_heap) >= max_results:
+					# Pushpop the highest (cosine similarity) value
+					# tuple from the heap to make way for the next
+					# tuple.
+					heapq.heappushpop(
+						stack_heap,
+						file_tfidf_heap.pop()
+					)
+				else:
+					heapq.heappush(
+						stack_heap,
+						file_tfidf_heap.pop()
+					)
+
+		return stack_heap
 	
 
 	def compute_tfidf(self, words: List[str], query_word_freq: Dict, documents: List[str], max_results: int = -1):
@@ -1022,7 +1230,7 @@ class TF_IDF(BagOfWords):
 		return corpus_tfidf_heap
 
 
-class BM25(BagOfWords):
+class BM25(BagOfWords):#
 	def __init__(self, bow_dir: str, k1: float = 1.0, b: float = 0.0, 
 			  	corpus_size: int=-1, avg_doc_len: float=-1.0, srt: 
 				float=-1.0, use_json=False) -> None:
