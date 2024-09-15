@@ -980,7 +980,6 @@ class TF_IDF(BagOfWords):
 
 			# Convert the documents set to a list.
 			local_documents = list(local_documents)
-			print(f"Local documents: {len(local_documents)}")
 
 			###########################################################
 			# TF-IDF Ranking
@@ -1009,16 +1008,9 @@ class TF_IDF(BagOfWords):
 				self.use_json
 			)
 
-			# Compute the intersection of the documents passed in from
-			# arguments and the current list of documents in the file.
-			document_intersect = set(local_documents).intersection(
-				list(doc_to_words.keys())
-			)
-			print(f"Thread doc interstection {len(document_intersect)}")
-			print(f"local and intersection match: {len(local_documents) == len(document_intersect)}")
-
-			for doc in list(document_intersect):
-			# for doc in local_documents:
+			# Iterate through all documents returned by the inverted 
+			# index.
+			for doc in local_documents:
 				# Extract the document word frequencies.
 				word_freq_map = doc_to_words[doc]
 
@@ -1075,21 +1067,6 @@ class TF_IDF(BagOfWords):
 						# [doc_cos_score, doc, doc_tfidf] # Results in issues unpacking list in preint_results()
 						[doc_cos_score, doc]
 					)
-
-			# while len(file_tfidf_heap) > 0:
-			# 	if max_results != -1 and len(stack_heap) >= max_results:
-			# 		# Pushpop the highest (cosine similarity) value
-			# 		# tuple from the heap to make way for the next
-			# 		# tuple.
-			# 		heapq.heappushpop(
-			# 			stack_heap,
-			# 			file_tfidf_heap.pop()
-			# 		)
-			# 	else:
-			# 		heapq.heappush(
-			# 			stack_heap,
-			# 			file_tfidf_heap.pop()
-			# 		)
 
 		print(f"thread stack heap length: {len(stack_heap)}")
 		return stack_heap
