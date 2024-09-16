@@ -340,14 +340,16 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - semantic search [sbert documentation](https://www.sbert.net/examples/applications/semantic-search/README.html)
  - Documentation of native python module used:
      - [argparse](https://docs.python.org/3.9/library/argparse.html)
+     - [concurrent.futures](https://docs.python.org/3.9/library/concurrent.futures.html)
      - [copy](https://docs.python.org/3.9/library/copy.html)
      - [gc](https://docs.python.org/3.9/library/gc.html)
      - [json](https://docs.python.org/3.9/library/json.html)
      - [math](https://docs.python.org/3.9/library/math.html)
      - [multiprocessing](https://docs.python.org/3.9/library/multiprocessing.html)
      - [os](https://docs.python.org/3.9/library/os.html)
-     - [string](https://docs.python.org/3.9/library/string.html)
      - [shutil](https://docs.python.org/3.9/library/shutil.html)
+     - [sqlite3](https://docs.python.org/3.9/library/sqlite3.html?highlight=sqlite#module-sqlite3)
+     - [string](https://docs.python.org/3.9/library/string.html)
      - [typing](https://docs.python.org/3.9/library/typing.html)
  - Cython:
      - Python documentation on [extending python with c/c++](https://docs.python.org/3.10/extending/extending.html)
