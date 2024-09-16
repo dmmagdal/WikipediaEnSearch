@@ -12,6 +12,7 @@
 
 
 import argparse
+import copy
 import gc
 import json
 import math
@@ -246,7 +247,7 @@ def index_categories_from_documents(doc_files: List[str], doc_to_int: Dict[str, 
 			title_tag = page.find("title")
 			text_tag = page.find("text")
 
-			# Verify that the titla and text data is in the article.
+			# Verify that the title and text data is in the article.
 			assert None not in [title_tag, text_tag]
 
 			# Extract the text from each tag.
@@ -326,13 +327,107 @@ def remove_cycles(cat_to_cat):
 	visited = set()
 	rec_stack = set()
 
+	# Isolate top-most nodes (no inbound vertices).
+	top_categories = list(cat_to_cat.keys())
+	remove_categories = list()
+	for top_category in top_categories:
+		# Check each list of outbound vertices for each node in the 
+		# graph.
+		for category in top_categories:
+			if top_category in cat_to_cat[category]:
+				remove_categories.append(category)
+	remove_categories = list(set(remove_categories))
+	root_categories = [
+		category for category in top_categories
+		if category not in remove_categories
+	]
+
 	# Iterate through each node in the graph and run DFS on each one to
 	# handle any possible cycles.
-	for node in list(cat_to_cat.keys()):
+	# for node in list(cat_to_cat.keys()):
+	for node in root_categories:
 		if node not in visited:
 			dfs(node, visited, rec_stack)
 
 	return cat_to_cat
+
+
+def build_category_metadata(cat_to_cat, cat_to_doc, d2w_files, int_to_doc, use_json=False):
+
+
+	cat_to_word_freq = dict()
+
+	known_cat = list(cat_to_doc.keys())
+	all_categories = list()
+	for key in list(cat_to_cat.keys()):
+		all_categories += [key] + list(cat_to_cat[key])
+
+	empty_value = {
+		"word_freq": dict(),
+		"num_doc": 0,
+	}
+	
+	for cat in all_categories:
+		if cat not in known_cat:
+			cat_to_word_freq[cat] = empty_value
+		else:
+			known_word_freq = dict()
+			docs_ints = cat_to_doc[cat]
+			for doc_int in docs_ints:
+				doc = int_to_doc[doc_int]
+				for file in d2w_files:
+					data = load_data_file(file, use_json)
+					if doc in list(data.keys()):
+						word_freq = data[doc]
+						for word in word_freq:
+							if word in known_word_freq:
+								known_word_freq[word] += word_freq[word]
+							else:
+								known_word_freq[word] = word_freq[word]
+
+			cat_to_word_freq[cat] = {
+				"word_freq": known_word_freq,
+				"num_doc": len(docs_ints)
+			}
+
+	queue = all_categories
+	while len(queue) != 0:
+		# Pop the current category from the queue.
+		category = queue.pop(0)
+
+		# Isolate parent categories.
+		parent_categories = list()
+		for parent_category in list(cat_to_cat.keys()):
+			if category in cat_to_cat[parent_category]:
+				parent_categories.append(parent_category)
+
+		# Identify child categories.
+		child_categories = list()
+		if category in list(cat_to_cat.keys()):
+			child_categories = cat_to_cat[category]
+
+		# Iterate throuch each child category.
+		for child_category in child_categories:
+			data = cat_to_word_freq[child_category]
+			child_word_freq = data["word_freq"]
+			current_word_freq = cat_to_word_freq[category]["word_freq"]
+
+			# Update number of documents and word frequency parameter.
+			cat_to_word_freq[category]["num_doc"] += data["num_doc"]
+			for word in list(child_word_freq.keys()):
+				if word in list(current_word_freq.keys()):
+					cat_to_word_freq[category]["word_freq"][word] += word_freq[word]
+				else:
+					cat_to_word_freq[category]["word_freq"][word] = word_freq[word]
+
+		# Insert parent categories into the queue.
+		parent_categories = [
+			cat_ for cat_ in parent_categories if cat_ not in queue
+		]
+		queue += parent_categories
+
+	assert empty_value not in cat_to_word_freq.values()
+	return cat_to_word_freq
 
 
 def main():
@@ -492,10 +587,11 @@ def main():
 	all_categories = []
 	for key in list(cat_to_cat.keys()):
 		all_categories += [key] + list(cat_to_cat[key])
-	print(f"Number of unique categories (3): {len(set(all_categories))}") #  <- accurate count (7093743 with duplicates) 
+	print(f"Number of unique categories (3): {len(set(all_categories))}") # 4644198 <- accurate count
 
 	# Remove cycles in the category to category mapping.
-	cat_to_cat_new = remove_cycles(cat_to_cat)
+	cat_to_cat_new = copy.deepcopy(cat_to_cat)
+	cat_to_cat_new = remove_cycles(cat_to_cat_new)
 	print(cat_to_cat_new == cat_to_cat)
 
 	###################################################################
