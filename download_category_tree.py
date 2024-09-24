@@ -135,6 +135,11 @@ def main():
 		default=2, 
 		help="Max level of depth to go in the wikipedia category tree. Default is 2."
 	)
+	parser.add_argument(
+		"--draw_graph",
+		action="store_true",
+		help="hether to draw and save the graph to png. Default is false/not specified."
+	)
 
 	# Parse arguments.
 	args = parser.parse_args()
@@ -148,8 +153,9 @@ def main():
 	# Save the graph to a file
 	save_graph(G, f"wiki_categories_depth{depth}.graphml", format="graphml")  # Change format to 'gml' or 'edgelist' as needed
 
-	# Draw the graph
-	draw_graph(G, depth)
+	if args.draw_graph:
+		# Draw the graph
+		draw_graph(G, depth)
 
 	# Exit the program.
 	exit(0)
