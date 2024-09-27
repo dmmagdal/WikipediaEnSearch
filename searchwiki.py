@@ -71,7 +71,7 @@ def test() -> None:
 
 	search_engines = [
 		("tf-idf", tf_idf), 
-		("bm25", bm25), 
+		# ("bm25", bm25), 
 		# ("vector", vector_search),
 		# ("rerank", rerank)
 	]
