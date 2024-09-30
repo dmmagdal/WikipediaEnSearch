@@ -1037,6 +1037,17 @@ class TF_IDF(BagOfWords):
 				if self.srt > 0.0 and doc_cos_score > self.srt:
 					continue
 
+				# NOTE:
+				# Cosine simularity range is [-1, 1] with -1 being
+				# inversely related and 1 being directly related (and 0
+				# for orthogonal or no relation). By multiplying the 
+				# score by -1 AFTER its computation, we get the most 
+				# relevant "higher" in the queue (heap).
+				# source: https://stats.stackexchange.com/questions/
+				# 	198810/interpreting-negative-cosine-similarity
+				# source: https://builtin.com/machine-learning/
+				# 	 cosine-similarity
+
 				# Multiply score by -1 to get inverse score. This is
 				# important since we are relying on a max heap.
 				doc_cos_score *= -1
