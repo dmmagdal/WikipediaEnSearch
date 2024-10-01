@@ -8,15 +8,44 @@
 
 import argparse
 import json
+import os
 from typing import Dict, List, Set
 
 import matplotlib.pyplot as plt
+import msgpack
 import networkx as nx
 import wikipediaapi
 
 
 # Initialize Wikipedia API
 WIKI = wikipediaapi.Wikipedia('MyProjectName (merlin@example.com)', 'en')
+
+
+def load_data_from_msgpack(path: str) -> Dict:
+	'''
+	Load a data file (to dictionary) from msgpack file given the path.
+	@param: path (str), the path of the data file that is to be loaded.
+	@return: Returns a python dictionary containing the structured data
+		from the loaded data file.
+	'''
+	with open(path, 'rb') as f:
+		byte_data = f.read()
+
+	return msgpack.unpackb(byte_data)
+
+
+def write_data_to_msgpack(path: str, data: Dict) -> None:
+	'''
+	Write data (dictionary) to a msgpack file given the path.
+	@param: path (str), the path of the data file that is to be 
+		written/created.
+	@param: data (Dict), the structured data (dictionary) that is to be
+		written to the file.
+	@return: returns nothing.
+	'''
+	with open(path, 'wb+') as f:
+		packed = msgpack.packb(data)
+		f.write(packed)
 
 
 # Function to recursively get all categories and subcategories
@@ -94,6 +123,11 @@ def save_graph(G: nx.DiGraph, file_name: str, format: str = "graphml") -> None:
 		"graphml".
 	@return: returns nothing.
 	'''
+	assert file_name.endswith(format),\
+		f"Expected filename {file_name} to end with appropriate extension. Recieved {format}"
+
+	valid_extensions = ["graphml", "gml", "edgelist", "json", "msgpack"]
+
 	if format == "graphml":
 		nx.write_graphml(G, file_name)  # Save as GraphML
 	elif format == "gml":
@@ -102,11 +136,47 @@ def save_graph(G: nx.DiGraph, file_name: str, format: str = "graphml") -> None:
 		nx.write_edgelist(G, file_name) # Save as Edge List
 	elif format == "json":
 		with open(file_name, "w+") as f:
-			json.dump(nx.to_dict_of_dicts(G), f, indent=4)
-	# elif format == "msgpack":
-	# 	pass
+			json.dump(nx.to_dict_of_lists(G), f, indent=4)
+			# json.dump(nx.node_link_data(G), f, indent=4)
+	elif format == "msgpack":
+		write_data_to_msgpack(file_name, nx.to_dict_of_lists(G))
+		# write_data_to_msgpack(file_name, nx.node_link_data(G))
 	else:
-		raise ValueError("Unsupported format: choose 'graphml', 'gml', or 'edgelist'.")
+		raise ValueError(f"Unsupported format: choose {', '.join(valid_extensions)}.")
+
+
+# Load the graph from a file
+def load_graph(file_name: str, format: str = "graphml") -> nx.DiGraph:
+	'''
+	Load the graph from a file.
+	@param: file_name (str), the filename to load the graph from.
+	@param: format (str), how the graph should was saved. Default is
+		"graphml".
+	@return: returns  the graph of the category tree that is was to be
+		loaded.
+	'''
+	assert file_name.endswith(format),\
+		f"Expected filename {file_name} to end with appropriate extension. Recieved {format}"
+
+	valid_extensions = ["graphml", "gml", "edgelist", "json", "msgpack"]
+
+	if format == "graphml":
+		graph = nx.read_graphml(file_name)
+	elif format == "gml":
+		graph = nx.read_gml(file_name)
+	elif format == "edgelist":
+		graph = nx.read_edgelist(file_name)
+	elif format == "json":
+		with open(file_name, "r") as f:
+			graph = nx.from_dict_of_lists(json.load(f))
+			# graph = nx.node_link_graph(json.load(f), directed=True)
+	elif format == "msgpack":
+		graph = nx.from_dict_of_lists(load_data_from_msgpack(file_name))
+		# graph = nx.node_link_graph(load_data_from_msgpack(file_name))
+	else:
+		raise ValueError(f"Unsupported format: choose {', '.join(valid_extensions)}.")
+	
+	return graph.to_directed()
 
 
 # Visualize the graph using Matplotlib
@@ -124,6 +194,39 @@ def draw_graph(G: nx.DiGraph, depth: int = 1) -> None:
 	nx.draw(G, pos, with_labels=True, node_size=3000, node_color='skyblue', font_size=10, font_weight='bold', edge_color='gray')
 	# plt.show()
 	plt.savefig(f"Wikipedia-category-graph_depth{depth}.png")
+
+
+def convert_graph_file(depth: str, extension1: str, extension2: str) -> None:
+	'''
+	Load and save a graph from one file format to another.
+	@param: depth (str), the max depth of the category tree that was 
+		generated.
+	@param: extension1 (str), the file format extension that is used 
+		for the loaded file.
+	@param: extension2 (str), the file format extension that is used 
+		for the saved file.
+	@return: returns nothing.
+	'''
+	valid_extensions = ["graphml", "gml", "edgelist", "json", "msgpack"]
+	assert extension1 in valid_extensions,\
+		f"invalid save extension used: {extension1}"
+	assert extension2 in valid_extensions,\
+		f"invalid save extension used: {extension2}"
+	
+	load_path = os.path.join(
+		"./wiki_category_graphs",
+		f"wiki_categories_depth{depth}.{extension1}"
+	)
+	save_path = os.path.join(
+		"./wiki_category_graphs",
+		f"wiki_categories_depth{depth}.{extension2}"
+	)
+
+	assert os.path.exists(load_path),\
+		f"Could not find target file {load_path}"
+
+	graph = load_graph(load_path, format=extension1)
+	save_graph(graph, save_path, format=extension2)
 
 
 def main():
@@ -144,14 +247,41 @@ def main():
 	# Parse arguments.
 	args = parser.parse_args()
 
-	# Control the depth of subcategory exploration
+	# Control the depth of subcategory exploration.
 	depth = args.depth
+
+	# Convert graph between formats.
+	# convert_graph_file(depth, "graphml", "json")
+	# convert_graph_file(depth, "json", "msgpack")
+	# graphml_graph = load_graph(
+	# 	f"./wiki_category_graphs/wiki_categories_depth{depth}.graphml", 
+	# 	"graphml"
+	# )
+	# msgpack_graph = load_graph(
+	# 	f"./wiki_category_graphs/wiki_categories_depth{depth}.msgpack", 
+	# 	"msgpack"
+	# )
+	# json_graph = load_graph(
+	# 	f"./wiki_category_graphs/wiki_categories_depth{depth}.json", 
+	# 	"json"
+	# )
+	# # print(f"graphml matches json: {nx.is_isomorphic(graphml_graph, json_graph)}")			# False
+	# # print(f"graphml matches msgpack: {nx.is_isomorphic(graphml_graph, msgpack_graph)}")	# False
+	# # print(f"json matches msgpack: {nx.is_isomorphic(json_graph, msgpack_graph)}") 		# Takes a REALLY long time for some reason compared to the above comparison
+	# print(f"graphml matches json: {nx.vf2pp_is_isomorphic(graphml_graph, json_graph)}")			# False
+	# print(f"graphml matches msgpack: {nx.vf2pp_is_isomorphic(graphml_graph, msgpack_graph)}")	# False
+	# print(f"json matches msgpack: {nx.vf2pp_is_isomorphic(json_graph, msgpack_graph)}") 		# Takes a REALLY long time (still) for some reason compared to the above comparison
+	# exit()
 	
 	# Build the graph for all categories
 	G = build_full_graph(depth)
 
 	# Save the graph to a file
-	save_graph(G, f"wiki_categories_depth{depth}.graphml", format="graphml")  # Change format to 'gml' or 'edgelist' as needed
+	save_path = os.path.join(
+		"./wiki_category_graphs",
+		f"wiki_categories_depth{depth}.graphml"
+	)
+	save_graph(G, save_path, format="graphml")  # Change format to 'gml' or 'edgelist' as needed
 
 	if args.draw_graph:
 		# Draw the graph
