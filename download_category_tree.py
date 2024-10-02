@@ -14,6 +14,7 @@ from typing import Dict, List, Set
 import matplotlib.pyplot as plt
 import msgpack
 import networkx as nx
+from tqdm import tqdm
 import wikipediaapi
 
 
@@ -229,6 +230,61 @@ def convert_graph_file(depth: str, extension1: str, extension2: str) -> None:
 	save_graph(graph, save_path, format=extension2)
 
 
+def graphs_equal(graph1: nx.Graph, graph2: nx.Graph, use_isomorphic: bool = False, use_vf2pp: bool = False) -> bool:
+	if use_isomorphic:
+		return nx.is_isomorphic(graph1, graph2)
+	elif use_vf2pp:
+		return nx.vf2pp_is_isomorphic(graph1, graph2)
+	else:
+		# NOTE:
+		# Assumes the sorting of nodes (and edges) will result in the
+		# entries being aligned. If the entries are not aligned, this
+		# implies there is a difference which is evident of graphs that
+		# do not match.
+
+		# NOTE:
+		# Checks edge sets and vertex sets between graphs.
+
+		# Isolate the nodes.
+		g1_nodes = sorted(list(graph1.nodes))
+		g2_nodes = sorted(list(graph2.nodes))
+		
+		# Verify the number of nodes is the same.
+		if len(g1_nodes) != len(g2_nodes):
+			return False
+		
+		# Iterate through each node in the graph.
+		for node_idx in tqdm(range(len(g1_nodes))):
+			# Isolate the nodes.
+			g1_node = g1_nodes[node_idx]
+			g2_node = g2_nodes[node_idx]
+			
+			# Verify the number of edges from the node is the same.
+			if g1_node != g2_node:
+				return False
+			
+			# Isolate edges from the node.
+			g1_node_edges = sorted(list(graph1.edges(g1_node)))
+			g2_node_edges = sorted(list(graph1.edges(g2_node)))
+
+			# Verify the number of edges from the node is the same.
+			if len(g1_node_edges) != len(g2_node_edges):
+				return False
+			
+			# Iterate through each edge in the node edges.
+			for edge_idx in range(len(g1_node_edges)):
+				# Isolate the edges.
+				g1_node_edge = g1_node_edges[edge_idx]
+				g2_node_edge = g2_node_edges[edge_idx]
+
+				# Verify the number of edges from the node is the same.
+				if g1_node_edge != g2_node_edge:
+					return False
+
+	# Return true since all checks pass.
+	return True
+
+
 def main():
 	# Initialize argument parser and arguments.
 	parser = argparse.ArgumentParser()
@@ -249,29 +305,6 @@ def main():
 
 	# Control the depth of subcategory exploration.
 	depth = args.depth
-
-	# Convert graph between formats.
-	# convert_graph_file(depth, "graphml", "json")
-	# convert_graph_file(depth, "json", "msgpack")
-	# graphml_graph = load_graph(
-	# 	f"./wiki_category_graphs/wiki_categories_depth{depth}.graphml", 
-	# 	"graphml"
-	# )
-	# msgpack_graph = load_graph(
-	# 	f"./wiki_category_graphs/wiki_categories_depth{depth}.msgpack", 
-	# 	"msgpack"
-	# )
-	# json_graph = load_graph(
-	# 	f"./wiki_category_graphs/wiki_categories_depth{depth}.json", 
-	# 	"json"
-	# )
-	# # print(f"graphml matches json: {nx.is_isomorphic(graphml_graph, json_graph)}")			# False
-	# # print(f"graphml matches msgpack: {nx.is_isomorphic(graphml_graph, msgpack_graph)}")	# False
-	# # print(f"json matches msgpack: {nx.is_isomorphic(json_graph, msgpack_graph)}") 		# Takes a REALLY long time for some reason compared to the above comparison
-	# print(f"graphml matches json: {nx.vf2pp_is_isomorphic(graphml_graph, json_graph)}")			# False
-	# print(f"graphml matches msgpack: {nx.vf2pp_is_isomorphic(graphml_graph, msgpack_graph)}")	# False
-	# print(f"json matches msgpack: {nx.vf2pp_is_isomorphic(json_graph, msgpack_graph)}") 		# Takes a REALLY long time (still) for some reason compared to the above comparison
-	# exit()
 	
 	# Build the graph for all categories
 	G = build_full_graph(depth)
@@ -286,6 +319,32 @@ def main():
 	if args.draw_graph:
 		# Draw the graph
 		draw_graph(G, depth)
+
+	# Convert graph between formats.
+	convert_graph_file(depth, "graphml", "json")
+	convert_graph_file(depth, "json", "msgpack")
+	graphml_graph = load_graph(
+		f"./wiki_category_graphs/wiki_categories_depth{depth}.graphml", 
+		"graphml"
+	)
+	msgpack_graph = load_graph(
+		f"./wiki_category_graphs/wiki_categories_depth{depth}.msgpack", 
+		"msgpack"
+	)
+	json_graph = load_graph(
+		f"./wiki_category_graphs/wiki_categories_depth{depth}.json", 
+		"json"
+	)
+
+	print(f"graphml matches json: {graphs_equal(graphml_graph, json_graph)}")								# True
+	print(f"graphml matches msgpack: {graphs_equal(graphml_graph, msgpack_graph)}")							# True
+	print(f"json matches msgpack: {graphs_equal(json_graph, msgpack_graph)}")								# True
+	# print(f"graphml matches json: {graphs_equal(graphml_graph, json_graph, use_isomorphic=True)}")			# False
+	# print(f"graphml matches msgpack: {graphs_equal(graphml_graph, msgpack_graph, use_isomorphic=True)}")	# False
+	# print(f"json matches msgpack: {graphs_equal(json_graph, msgpack_graph, use_isomorphic=True)}") 			# Takes a REALLY long time for some reason compared to the above comparison
+	# print(f"graphml matches json: {graphs_equal(graphml_graph, json_graph, use_vf2pp=True)}")				# False
+	# print(f"graphml matches msgpack: {graphs_equal(graphml_graph, msgpack_graph, use_vf2pp=True)}")			# False
+	# print(f"json matches msgpack: {graphs_equal(json_graph, msgpack_graph, use_vf2pp=True)}") 				# Takes a REALLY long time (still) for some reason compared to the above comparison
 
 	# Exit the program.
 	exit(0)
