@@ -44,6 +44,30 @@
                          - Model is pretrained on some other dataset. May be a good idea to look at a model trained on wikipedia or train it myself.
                      - Wikicat repo below for simplified creation/structuring of the categories.
                          - Is a python-only repo/package.
+                     - Doesn't handle multi word labels (can only convert one word at a time to vector).
+         - Category traversal with BERT similarity
+             - Pros
+                 - More abstract but also more direct/faster than plain inverted index.
+             - Cons
+                 - Compute intensive
+                     - Every query will have to be embedded (cost is a few seconds but that is per query).
+                     - Will have to precompute vectors for categories and store that information.
+                         - Takes time depending on the hardware where this is being deployed.
+                         - Incurs storage cost too.
+                     - Have to recompute every time the embedding model is switched.
+         - Document vectors with Doc2Vec
+             - Pros
+                 - Compresses documents to small vectors.
+             - Cons
+                 - Compute intensive
+                     - Will take a while to build and train model.
+                     - Will have to precompute vectors for categories and store that information.
+                         - Takes time depending on the hardware where this is being deployed.
+                         - Incurs storage cost too.
+                 - Scaling
+                     - Will have to scale to all documents (roughly 26 to 40 million). That will incur a lot of time when computing similarity and ranking. No better than the results that were being returned from the blind inverted index (possibly worse).
+ - [Inverted Index: a simple yet powerful data structure](https://evanxg852000.github.io/tutorial/rust/data/structure/2020/04/09/inverted-index-simple-yet-powerful-ds.html)
+     - Inverted index implemented in rust
 
 
 ### Wikipedia Structure
@@ -52,8 +76,32 @@
  - [Wikipedia:Contents/Categories](https://en.wikipedia.org/wiki/Wikipedia:Contents/Categories)
  - [Wikipedia:External search engines](https://en.wikipedia.org/wiki/Wikipedia:External_search_engines)
  - [Help:Searching](https://en.wikipedia.org/wiki/Wikipedia:External_search_engines)
+ - [Wikipedia:Categories](https://simple.wikipedia.org/wiki/Wikipedia:Categories)
+     - Contains information on Wikipedia's category tree
+ - [Category:Commons category link on Wikipedia](https://en.wikipedia.org/wiki/Category:Commons_category_link_is_on_Wikidata)
+     - Contains information on commons category links in Wikipedia
+ - [Extension:Category Tree](https://www.mediawiki.org/wiki/Extension:CategoryTree)
+     - Contains information on Wikipedia's category tree
+ - [Wikipedia:Vital Articles](https://en.wikipedia.org/wiki/Wikipedia:Vital_articles)
+     - Could also be used for creating a category tree
+ - [Category:Main topic classifications](https://en.wikipedia.org/wiki/Category:Main_topic_classifications)
+     - Used as the root node for creating the category tree
+ - [Manual:categorylinks table](https://www.mediawiki.org/wiki/Manual:Categorylinks_table)
+ - [API:Main page](https://www.mediawiki.org/wiki/API:Main_page)
+ - Extract Wikipedia categories from dump - [stackoverflow](https://stackoverflow.com/questions/17432254/wikipedia-category-hierarchy-from-dumps)
+ - Build Wikipedia category tree from dump - [stackoverflow](https://stackoverflow.com/questions/27279649/how-to-build-wikipedia-category-hierarchy)
+ - Parsing Wikipedia Page Hierarchy - [Koding Notes](https://kodingnotes.wordpress.com/2014/12/03/parsing-wikipedia-page-hierarchy/)
+     - Deals directly with category links stored in mySQL (`.sql`) file.
+ - What Wikipedia’s Network Structure Can Tell Us About Culture - [medium article](https://docmarionum1.medium.com/what-wikipedias-network-structure-can-tell-us-about-culture-38f8caabf69d)
+     - Not directly applicable to the research but was still interesting to read.
  - [Wikicat repo](https://github.com/xhluca/wikicat)
      - Useful for managing and navigating graphs of Wikipedia categories
+
+
+### Graph Theory
+
+ - MAT202: Introduction to Discrete Mathematics - [isomorphisms and Subgraphs](https://tjyusun.com/mat202/sec-graph-isomorphisms.html)
+     - Useful for graph theory and understanding isomorphism vs graph equality.
 
 
 ### Chunking
@@ -61,13 +109,14 @@
  - [Breaking up is hard to do: Chunking in RAG applications](https://stackoverflow.blog/2024/06/06/breaking-up-is-hard-to-do-chunking-in-rag-applications)
 
 
-### Inverted Index
-
- - [Inverted Index: a simple yet powerful data structure](https://evanxg852000.github.io/tutorial/rust/data/structure/2020/04/09/inverted-index-simple-yet-powerful-ds.html)
-     - Inverted index implemented in rust
-
-
 ### Doc2Vec
 
+ - [Gensim Doc2Vec Documentation](https://radimrehurek.com/gensim/models/doc2vec.html)
  - [Doc2Vec: Understanding Document Embeddings for Natural Language Processing](https://medium.com/@evertongomede/doc2vec-understanding-document-embeddings-for-natural-language-processing-ba244e55eba3)
      - Use freedium since this is a premium medium article
+
+
+### Similar Works
+
+ - [Developing a Search Engine Framework for Wikipedia Articles](https://medium.com/@akleber/developing-a-search-engine-framework-for-wikipedia-articles-81fcbd95a928)
+ - [Improving Vector Search to Find the Most Relevant Documents](https://medium.com/@PascalBiese/improving-vector-search-to-find-the-most-relevant-papers-ce6b6d4222f1)
