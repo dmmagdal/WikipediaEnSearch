@@ -231,6 +231,18 @@ def convert_graph_file(depth: str, extension1: str, extension2: str) -> None:
 
 
 def graphs_equal(graph1: nx.Graph, graph2: nx.Graph, use_isomorphic: bool = False, use_vf2pp: bool = False) -> bool:
+	'''
+	Determine if a graph is equal or isomorphic.
+	@param: graph1 (nx.Graph), One of the graphs to be compared.
+	@param: graph2 (nx.Graph), The other graph to be compared.
+	@param: use_isomorphism (bool), Whether to use networkx's 
+		is_isomorphic() to determine if the graphs are isomorphic.
+		Default is False.
+	@param: use_vf2pp (bool), Whether to use networkx's 
+		vf2pp_is_isomorphic() to determine if the graphs are 
+		isomorphic.Default is False.
+	@return: returns whether the graphs are equal or isomorphic.
+	'''
 	if use_isomorphic:
 		return nx.is_isomorphic(graph1, graph2)
 	elif use_vf2pp:
