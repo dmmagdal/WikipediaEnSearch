@@ -200,19 +200,6 @@ def main():
 	with open("missed_documents.json", "r") as md_f:
 		missed_docs = json.load(md_f)
 
-	# Update category to document mappings to be specific for this 
-	# section (DO NOT SAVE THE MODIFIED DICTIONARY).
-	# print(f"Isolating only the necessary category and document information:")
-	# for category, documents in tqdm(cat2doc.items()):
-	# 	if category not in missed_cats:
-	# 		del cat2doc[category]
-	# 	else:
-	# 		cat2doc[category] = [
-	# 			doc 
-	# 			for doc in documents 
-	# 			if doc in missed_docs
-	# 		]
-
 	# NOTE:
 	# Similar to the problems from KBAI course at GATech OMSCS. 
 	# Treating this like a state space problem. Initial state will be
@@ -278,11 +265,6 @@ def main():
 				for doc in cat2doc[solution_category]
 				if doc in missed_docs
 			]
-			# covered_documents = [
-			# 	doc 
-			# 	for solution_category in new_solution
-			# 	for doc in cat2doc[solution_category]
-			# ] # Can use this if cat2doc only contains documents from missed_docs
 			new_document_coverage = len(set(covered_documents))
 
 			# Skip appending states that do not increase the coverage.
