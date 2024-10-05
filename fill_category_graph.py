@@ -342,7 +342,7 @@ def main():
 		print(f"Solution was found")
 
 	with open("filler_categories.json", "w+") as f:
-		json.dump(solution, f, indent=4)
+		json.dump(list(solution), f, indent=4)
 
 
 
