@@ -118,6 +118,8 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
                 )
         });
 
+        let mut best_document_coverage: usize = document_coverage.clone();
+
         // Initialize vector to keep track of the states generated 
         // below. Also initialize a progress bar for progress tracking.
         let mut options: Vec<(Vec<String>, usize, HashSet<String>)> = Vec::new();
@@ -142,6 +144,14 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
 
             // Skip appending states that do not increase the coverage.
             if new_document_coverage <= document_coverage {
+                pb.inc(1);
+                continue;
+            }
+
+            if new_document_coverage > best_document_coverage {
+                best_document_coverage = new_document_coverage.clone();
+            }
+            else {
                 pb.inc(1);
                 continue;
             }
