@@ -213,9 +213,9 @@ def main():
 
 
 	missed_docs_set = set(missed_docs)
-	cat2doc = rsh.filter_category_map(
-		cat2doc, missed_docs_set, missed_cats
-	)
+	# cat2doc = rsh.filter_category_map(
+	# 	cat2doc, missed_docs_set, missed_cats
+	# )
 
 	# NOTE:
 	# Similar to the problems from KBAI course at GATech OMSCS. 
