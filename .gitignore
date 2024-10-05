@@ -27,3 +27,6 @@ generate_idf_state.txt
 
 # test data for test scripts
 pages-articles-multistream10*
+
+# rust output bundles
+/target
