@@ -4,12 +4,13 @@ faiss-cpu==1.7.3
 lancedb==0.8.0
 lxml==4.9.1
 matplotlib==3.9.2
+maturin==1.7.0
 msgpack==1.0.0
 networkx==3.3
 nltk==3.8
 num2words==0.5.12
 requests==2.31.0
-transformers==4.31.0
+transformers==4.45.0
 torch==2.1.0
 torchaudio==2.1.0
 torchvision==0.16.0
