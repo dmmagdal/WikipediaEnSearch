@@ -211,13 +211,9 @@ def main():
 	with open("missed_documents.json", "r") as md_f:
 		missed_docs = json.load(md_f)
 
+
 	missed_docs_set = set(missed_docs)
-	# for key in tqdm(missed_cats):
-	# 	docs = copy.deepcopy(cat2doc[key])
-	# 	cat2doc[key] = [
-	# 		doc for doc in docs if doc in missed_docs_set
-	# 	]
-	cat_to_docs = rsh.filter_category_map(
+	cat2doc = rsh.filter_category_map(
 		cat2doc, missed_docs_set, missed_cats
 	)
 
@@ -228,116 +224,119 @@ def main():
 	# with full coverage of the remaining documents.
 
 	# Initialize key variables.
-	solution = []
-	visited = []
-	coverage = 0
-	full_coverage = len(missed_docs)
-	initial_state = (missed_cats, coverage, solution)
-	queue = [initial_state]
-	is_solved = False
+	# solution = []
+	# visited = []
+	# coverage = 0
+	# full_coverage = len(missed_docs)
+	# initial_state = (missed_cats, coverage, solution)
+	# queue = [initial_state]
+	# is_solved = False
 
 	# Iterate through a heavily modified BFS to find the smallest
 	# combination of categories that would cover the remaining missed
 	# documents from the dump.
 	print("Isolatinging minimum number of categories for full coverage:")
-	while len(queue) != 0 and not is_solved:
-		# Pop the state from the queue and unpack it.
-		available_categories, document_coverage, current_solution = queue.pop(0)
+	# while len(queue) != 0 and not is_solved:
+	# 	# Pop the state from the queue and unpack it.
+	# 	available_categories, document_coverage, current_solution = queue.pop(0)
 
-		# Check for document coverage. If we have 100% coverage, this
-		# is a sign that we have reached a solution state.
-		if document_coverage == full_coverage:
-			is_solved = True
-			solution = copy.deepcopy(current_solution)
-			continue
+	# 	# Check for document coverage. If we have 100% coverage, this
+	# 	# is a sign that we have reached a solution state.
+	# 	if document_coverage == full_coverage:
+	# 		is_solved = True
+	# 		solution = copy.deepcopy(current_solution)
+	# 		continue
 
-		# Skip solutions (category combinations) that have been 
-		# visited. Convert the current solution to a set because order
-		# of the categories in each visited solution doesnt matter.
-		if set(current_solution) in visited:
-			continue
+	# 	# Skip solutions (category combinations) that have been 
+	# 	# visited. Convert the current solution to a set because order
+	# 	# of the categories in each visited solution doesnt matter.
+	# 	if set(current_solution) in visited:
+	# 		continue
 
-		# Sort the list of available categories, giving preference to
-		# the ones that have more document coverage.
-		sorted_categories = sorted(
-			available_categories,
-			key=lambda category: len(cat2doc[category]),
-			reverse=True
-		)
+	# 	# Sort the list of available categories, giving preference to
+	# 	# the ones that have more document coverage.
+	# 	sorted_categories = sorted(
+	# 		available_categories,
+	# 		key=lambda category: len(cat2doc[category]),
+	# 		reverse=True
+	# 	)
 
-		# Iterate through each available category in the sorted list.
-		# Generate new possible states and append them to the queue.
-		options = []
-		for category in tqdm(sorted_categories):
-			# Initialize a new (hypothesis) solution by appending the
-			# current category to the end of the current solution.
-			new_solution = current_solution + [category]
+	# 	# Iterate through each available category in the sorted list.
+	# 	# Generate new possible states and append them to the queue.
+	# 	options = []
+	# 	for category in tqdm(sorted_categories):
+	# 		# Initialize a new (hypothesis) solution by appending the
+	# 		# current category to the end of the current solution.
+	# 		new_solution = current_solution + [category]
 
-			# Compute the new solution's document coverage.
-			# covered_documents = set()
-			# for solution_category in new_solution:
-			# 	covered_documents.update(cat2doc[solution_category])
-			# for doc in covered_documents:
-			# 	if doc not in missed_docs:
-			# 		covered_documents.remove(doc)
-			# covered_documents = [
-			# 	doc 
-			# 	for solution_category in new_solution
-			# 	for doc in cat2doc[solution_category]
-			# 	if doc in missed_docs
-			# ]
-			# new_document_coverage = len(set(covered_documents))
-			covered_documents = set()
-			for solution_category in new_solution:
-				covered_documents.update(cat2doc[solution_category])	# Requires all documents for all (possible) missed categories be filtered (have only documents from missed documents list).
-			new_document_coverage = len(covered_documents)
+	# 		# Compute the new solution's document coverage.
+	# 		# covered_documents = set()
+	# 		# for solution_category in new_solution:
+	# 		# 	covered_documents.update(cat2doc[solution_category])
+	# 		# for doc in covered_documents:
+	# 		# 	if doc not in missed_docs:
+	# 		# 		covered_documents.remove(doc)
+	# 		# covered_documents = [
+	# 		# 	doc 
+	# 		# 	for solution_category in new_solution
+	# 		# 	for doc in cat2doc[solution_category]
+	# 		# 	if doc in missed_docs
+	# 		# ]
+	# 		# new_document_coverage = len(set(covered_documents))
+	# 		covered_documents = set()
+	# 		for solution_category in new_solution:
+	# 			covered_documents.update(cat2doc[solution_category])	# Requires all documents for all (possible) missed categories be filtered (have only documents from missed documents list).
+	# 		new_document_coverage = len(covered_documents)
 
-			# Skip appending states that do not increase the coverage.
-			if new_document_coverage <= document_coverage:
-				continue
+	# 		# Skip appending states that do not increase the coverage.
+	# 		if new_document_coverage <= document_coverage:
+	# 			continue
 
-			# Remove the current category from the list of available 
-			# categories.
-			remaining_categories = copy.deepcopy(available_categories)
-			remaining_categories.remove(category)
+	# 		# Remove the current category from the list of available 
+	# 		# categories.
+	# 		remaining_categories = copy.deepcopy(available_categories)
+	# 		remaining_categories.remove(category)
 
-			# Create new state tuple and update the options list 
-			# accordingly. Also update the list of visited solutions 
-			# too.
-			new_state = (remaining_categories, new_document_coverage, new_solution)
-			# queue.append(new_state)
-			options.append(new_state)
-			visited.append(set(new_solution))
+	# 		# Create new state tuple and update the options list 
+	# 		# accordingly. Also update the list of visited solutions 
+	# 		# too.
+	# 		new_state = (remaining_categories, new_document_coverage, new_solution)
+	# 		# queue.append(new_state)
+	# 		options.append(new_state)
+	# 		visited.append(set(new_solution))
 			
-			# Memory cleanup.
-			del new_solution
-			del covered_documents
-			del remaining_categories
-			del new_state
-			gc.collect()
+	# 		# Memory cleanup.
+	# 		del new_solution
+	# 		del covered_documents
+	# 		del remaining_categories
+	# 		del new_state
+	# 		gc.collect()
 
-		# Sort list of new state options by highest coverage (priority 
-		# goes to solutions that offer higher document coverage). 
-		# Append the sorted list to the queue.
-		sorted_options = sorted(
-			options, key=lambda state: state[1], reverse=True
-		)
-		queue += sorted_options
+	# 	# Sort list of new state options by highest coverage (priority 
+	# 	# goes to solutions that offer higher document coverage). 
+	# 	# Append the sorted list to the queue.
+	# 	sorted_options = sorted(
+	# 		options, key=lambda state: state[1], reverse=True
+	# 	)
+	# 	queue += sorted_options
 
-		# Memory cleanup.
-		del available_categories
-		del document_coverage
-		del current_solution
-		del sorted_categories
-		del options
-		gc.collect()
+	# 	# Memory cleanup.
+	# 	del available_categories
+	# 	del document_coverage
+	# 	del current_solution
+	# 	del sorted_categories
+	# 	del options
+	# 	gc.collect()
 
-	# Memory cleanup.
-	del queue
-	del visited
-	gc.collect()
+	# # Memory cleanup.
+	# del queue
+	# del visited
+	# gc.collect()
+	solution = rsh.minimum_categories_for_coverage(
+		cat2doc, missed_docs_set, missed_cats
+	)
 
-	if not is_solved:
+	if not len(solution) == 0:
 		print(f"No solution was found")
 	else:
 		print(f"Solution was found")
