@@ -118,8 +118,6 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
                 )
         });
 
-        let mut best_document_coverage: usize = document_coverage.clone();
-
         // Initialize vector to keep track of the states generated 
         // below. Also initialize a progress bar for progress tracking.
         let mut options: Vec<(Vec<String>, usize, HashSet<String>)> = Vec::new();
@@ -148,14 +146,6 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
                 continue;
             }
 
-            if new_document_coverage > best_document_coverage {
-                best_document_coverage = new_document_coverage.clone();
-            }
-            else {
-                pb.inc(1);
-                continue;
-            }
-
             // Remove the current category from the list of available 
 	        // categories.
             let mut remaining_categories: Vec<String> = available_categories.clone();
@@ -178,6 +168,8 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
         );
         queue.extend(options);
     }
+
+    assert_eq!(is_solved, true);
 
     // Return the hashset of categories that will guarantee total
     // coverage of the remaining missing documents at with the least
