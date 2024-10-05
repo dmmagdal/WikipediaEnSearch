@@ -6,11 +6,14 @@
 
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import copy
 import gc
 import json
 import os
 from typing import Dict, List, Set
+
+import rust_search_helpers as rsh
 
 import msgpack
 import networkx as nx
@@ -137,6 +140,14 @@ def load_graph(file_name: str, format: str = "graphml") -> nx.DiGraph:
 	return graph.to_directed()
 
 
+def is_doc_in_missed_docs():
+	pass
+
+
+def fill_in_category_coverage():
+	pass
+
+
 def main():
 	# Initialize argument parser and arguments.
 	parser = argparse.ArgumentParser()
@@ -200,6 +211,16 @@ def main():
 	with open("missed_documents.json", "r") as md_f:
 		missed_docs = json.load(md_f)
 
+	missed_docs_set = set(missed_docs)
+	# for key in tqdm(missed_cats):
+	# 	docs = copy.deepcopy(cat2doc[key])
+	# 	cat2doc[key] = [
+	# 		doc for doc in docs if doc in missed_docs_set
+	# 	]
+	cat_to_docs = rsh.filter_category_map(
+		cat2doc, missed_docs_set, missed_cats
+	)
+
 	# NOTE:
 	# Similar to the problems from KBAI course at GATech OMSCS. 
 	# Treating this like a state space problem. Initial state will be
@@ -259,13 +280,17 @@ def main():
 			# for doc in covered_documents:
 			# 	if doc not in missed_docs:
 			# 		covered_documents.remove(doc)
-			covered_documents = [
-				doc 
-				for solution_category in new_solution
-				for doc in cat2doc[solution_category]
-				if doc in missed_docs
-			]
-			new_document_coverage = len(set(covered_documents))
+			# covered_documents = [
+			# 	doc 
+			# 	for solution_category in new_solution
+			# 	for doc in cat2doc[solution_category]
+			# 	if doc in missed_docs
+			# ]
+			# new_document_coverage = len(set(covered_documents))
+			covered_documents = set()
+			for solution_category in new_solution:
+				covered_documents.update(cat2doc[solution_category])	# Requires all documents for all (possible) missed categories be filtered (have only documents from missed documents list).
+			new_document_coverage = len(covered_documents)
 
 			# Skip appending states that do not increase the coverage.
 			if new_document_coverage <= document_coverage:
