@@ -40,6 +40,24 @@ fn filter_category_map_documents(
 }
 
 #[pyfunction]
+fn verify_filtered_category_map(
+    cat_to_doc: HashMap<String, Vec<String>>,
+    missed_docs: HashSet<String>,
+    missed_cats: Vec<String>
+) {
+    let pb: ProgressBar = ProgressBar::new(missed_cats.len().try_into().unwrap());
+
+    for category in missed_cats {
+        if let Some(docs) = cat_to_doc.get(&category) {
+            let doc_hashset: HashSet<String> = docs.clone().into_iter().collect();
+            let intersection: HashSet<_> = doc_hashset.intersection(&missed_docs).collect();
+            assert_eq!(doc_hashset.len(), intersection.len());
+        }
+        pb.inc(1);
+    }
+}
+
+#[pyfunction]
 fn filter_category_map(mut cat_to_doc: HashMap<String, Vec<String>>, missed_docs: HashSet<String>, missed_cats: Vec<String>) -> Py<PyAny> {
     // Initialize progress bar.
     let pb: ProgressBar = ProgressBar::new(missed_cats.len() as u64);
@@ -184,5 +202,6 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
 fn rust_search_helpers(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(filter_category_map, m)?)?;
     m.add_function(wrap_pyfunction!(minimum_categories_for_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(verify_filtered_category_map, m)?)?;
     Ok(())
 }

@@ -213,9 +213,17 @@ def main():
 
 
 	missed_docs_set = set(missed_docs)
-	# cat2doc = rsh.filter_category_map(
-	# 	cat2doc, missed_docs_set, missed_cats
-	# )
+	cat2doc_filtered = rsh.filter_category_map(
+		cat2doc, missed_docs_set, missed_cats
+	)
+	# for key, value in tqdm(cat2doc.items()):
+	# 	if key in missed_cats:
+	# 		val_len = len(value)
+	# 		assert len(set(value).intersection(missed_docs_set)) == val_len
+	rsh.verify_filtered_category_map(
+		cat2doc_filtered, missed_docs_set, missed_cats
+	)
+	exit(0)
 
 	# NOTE:
 	# Similar to the problems from KBAI course at GATech OMSCS. 
