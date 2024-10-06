@@ -107,6 +107,7 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
         &mut cat_to_doc, &missed_docs, missed_cats.clone()
     );
 
+    // Verify filter worked.
     verify_filtered_category_map(
         filtered_cat_to_doc.clone(),
         missed_docs.clone(),
