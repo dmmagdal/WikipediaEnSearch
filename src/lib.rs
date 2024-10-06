@@ -45,14 +45,29 @@ fn verify_filtered_category_map(
     missed_docs: HashSet<String>,
     missed_cats: Vec<String>
 ) {
+    // Initialize a progress bar.
     let pb: ProgressBar = ProgressBar::new(missed_cats.len().try_into().unwrap());
 
+    // Iterate through each category in the missed categories vector.
     for category in missed_cats {
+        // If the category is a valid key within the category to 
+        // document hashmap, verify the documents.
         if let Some(docs) = cat_to_doc.get(&category) {
+            // Verify documents by
+            // 1) convert the documents (value) for that category (key)
+            //  in the hashset. 
+            // 2) take the intersection of the documents (value) and
+            //  the missed documents hashset.
+            // 3) compare the length of the intersection with the 
+            //  length of the documents hashset. If the lengths are the
+            //  same, then the documents for that category are 
+            //  exclusively a subset of the missed documents hashset
+            //  and the documents for that category are valid.
             let doc_hashset: HashSet<String> = docs.clone().into_iter().collect();
             let intersection: HashSet<_> = doc_hashset.intersection(&missed_docs).collect();
             assert_eq!(doc_hashset.len(), intersection.len());
         }
+
         pb.inc(1);
     }
 }
@@ -90,6 +105,12 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
     // set.
     let filtered_cat_to_doc: HashMap<String, Vec<String>> = filter_category_map_documents(
         &mut cat_to_doc, &missed_docs, missed_cats.clone()
+    );
+
+    verify_filtered_category_map(
+        filtered_cat_to_doc.clone(),
+        missed_docs.clone(),
+        missed_cats.clone()
     );
 
     // Initialize variables for the search.
