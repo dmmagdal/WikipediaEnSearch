@@ -162,7 +162,8 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
         // below. Also initialize a progress bar for progress tracking.
         let mut options: Vec<(Vec<String>, usize, HashSet<String>)> = Vec::new();
         let pb: ProgressBar = ProgressBar::new(available_categories.len().try_into().unwrap());
-        
+        let mut best_coverage: usize = 0;
+
         // Iterate through each available category in the sorted list.
         // Generate new possible states and append them to the queue.
         for category in &available_categories {
@@ -180,8 +181,25 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
             }
             let new_document_coverage: usize = covered_documents.len();
 
+            println!("solution:");
+            for category in &new_solution {
+                println!("{category}");
+            }
+            println!("coverage: {new_document_coverage}");
+            println!("best coverage: {best_coverage}");
+            println!("current coverage: {document_coverage}");
+            println!();
+
             // Skip appending states that do not increase the coverage.
             if new_document_coverage <= document_coverage {
+                pb.inc(1);
+                continue;
+            }
+
+            if new_document_coverage > best_coverage {
+                best_coverage = new_document_coverage;
+            }
+            else {
                 pb.inc(1);
                 continue;
             }
