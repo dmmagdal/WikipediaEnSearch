@@ -336,7 +336,10 @@ def main():
 	# del visited
 	# gc.collect()
 	solution = rsh.minimum_categories_for_coverage(
-		cat2doc, missed_docs_set, missed_cats
+		cat2doc, missed_docs_set, missed_cats, use_bfs=True
+	)
+	solution = rsh.minimum_categories_for_coverage(
+		cat2doc, missed_docs_set, missed_cats, use_bfs=False
 	)
 
 	if not len(solution) == 0:
