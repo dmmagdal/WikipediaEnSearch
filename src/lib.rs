@@ -114,12 +114,24 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
         missed_cats.clone()
     );
 
+    // Remove categories that have 0 document coverage.
+    let mut filtered_missed_cats: HashSet<String> = HashSet::from_iter(missed_cats.clone());
+    for category in &missed_cats {
+        if let Some(docs) = filtered_cat_to_doc.get(category) {
+            if docs.len() == 0 {
+                filtered_missed_cats.remove(category);
+            }
+        }
+    }
+    let missed_cats_vec: Vec<String> = Vec::from_iter(filtered_missed_cats);
+
     // Initialize variables for the search.
     let mut solution: HashSet<String> = HashSet::new();
     let mut visited: Vec<HashSet<String>> = Vec::new();
     let coverage: usize = 0;
     let full_coverage: usize = missed_docs.len();
-    let initial_state: (Vec<String>, usize, HashSet<String>) = (missed_cats.clone(), coverage, solution.clone());
+    // let initial_state: (Vec<String>, usize, HashSet<String>) = (missed_cats.clone(), coverage, solution.clone());
+    let initial_state: (Vec<String>, usize, HashSet<String>) = (missed_cats_vec.clone(), coverage, solution.clone());
     let mut queue: Vec<(Vec<String>, usize, HashSet<String>)> = [initial_state].to_vec();
     let mut is_solved: bool = false;
 
