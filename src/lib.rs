@@ -193,14 +193,14 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
             }
             let new_document_coverage: usize = covered_documents.len();
 
-            println!("solution:");
-            for category in &new_solution {
-                println!("{category}");
-            }
-            println!("coverage: {new_document_coverage}");
-            // println!("best coverage: {best_coverage}");
-            println!("current coverage: {document_coverage}");
-            println!();
+            // println!("solution:");
+            // for category in &new_solution {
+            //     println!("{category}");
+            // }
+            // println!("coverage: {new_document_coverage}");
+            // // println!("best coverage: {best_coverage}");
+            // println!("current coverage: {document_coverage}");
+            // println!();
 
             // Skip appending states that do not increase the coverage.
             if new_document_coverage <= document_coverage {
