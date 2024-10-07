@@ -208,13 +208,13 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
                 continue;
             }
 
-            if new_document_coverage > best_coverage {
-                best_coverage = new_document_coverage;
-            }
-            else {
-                pb.inc(1);
-                continue;
-            }
+            // if new_document_coverage > best_coverage {
+            //     best_coverage = new_document_coverage;
+            // }
+            // else {
+            //     pb.inc(1);
+            //     continue;
+            // }
 
             // Remove the current category from the list of available 
 	        // categories.
