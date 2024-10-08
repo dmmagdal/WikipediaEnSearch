@@ -375,6 +375,7 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
 
     // Remove missed categories that have 0 document coverage.
     let mut filtered_missed_cats: HashSet<String> = HashSet::from_iter(missed_cats.clone());
+    let filtered_missed_cats_len: usize = filtered_missed_cats.len();
     for category in &missed_cats {
         if let Some(docs) = filtered_cat_to_doc.get(category) {
             if docs.len() == 0 {
@@ -382,7 +383,9 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
             }
         }
     }
+    assert_ne!(filtered_missed_cats.len(), filtered_missed_cats_len);
     let mut missed_cats_vec: Vec<String> = Vec::from_iter(filtered_missed_cats);
+    assert_ne!(missed_cats.len(), missed_cats_vec.len());
 
     // Sort missed categories by the number of (missed) documents
     // they correspond to.
