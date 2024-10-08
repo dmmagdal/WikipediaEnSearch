@@ -341,7 +341,7 @@ def main():
 	# solution = rsh.minimum_categories_for_coverage(
 	# 	cat2doc, missed_docs_set, missed_cats, use_bfs=False
 	# )
-	chunk_size = 500
+	chunk_size = 500# 1_000
 	solution = rsh.minimum_categories_for_coverage_new(
 		cat2doc, missed_docs_set, missed_cats, chunk_size
 	)
