@@ -428,6 +428,7 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
     let full_coverage: usize = missed_docs.len();
     for (idx, chunk) in category_chunks.iter().enumerate() {
         println!("Searching chunk {}/{}", idx + 1, category_chunks.len());
+        println!("Best coverage {}/{}", coverage, full_coverage);
         let initial_state: (Vec<String>, usize, HashSet<String>) = (chunk.clone(), coverage, solution.clone());
         let mut queue: Vec<(Vec<String>, usize, HashSet<String>)> = [initial_state].to_vec();
         let mut visited: Vec<HashSet<String>> = Vec::new();
