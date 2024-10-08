@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 // use pyo3::types::PyTuple;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ops::Index;
 use indicatif::ProgressBar;
 
 
@@ -422,12 +423,12 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
     }
     println!("{}", category_chunks.len());
 
-
     let mut solution: HashSet<String> = HashSet::new();
     let mut is_solved: bool = false;
     let coverage: usize = 0;
     let full_coverage: usize = missed_docs.len();
     for chunk in category_chunks {
+        println!("Searching chunk {}/{}", category_chunks.index(chunk), category_chunks.len());
         let initial_state: (Vec<String>, usize, HashSet<String>) = (chunk.clone(), coverage, solution.clone());
         let mut queue: Vec<(Vec<String>, usize, HashSet<String>)> = [initial_state].to_vec();
         let mut visited: Vec<HashSet<String>> = Vec::new();
