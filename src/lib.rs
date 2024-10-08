@@ -448,9 +448,15 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
             }
 
             // Skip solutions (category combinations) that have been 
-            // visited. Convert the current solution to a set because order    
+            // visited. Convert the current solution to a set because
+            // order of categories in solution states does not matter.
             if visited.contains(&current_solution) {
                 continue;
+            }
+
+            // Set solution if its coverage beats the current coverage.
+            if document_coverage > coverage {
+                solution = current_solution.clone();
             }
 
             // Sort the list of available categories, giving preference to
@@ -471,7 +477,6 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
             // below. Also initialize a progress bar for progress tracking.
             let mut options: Vec<(Vec<String>, usize, HashSet<String>)> = Vec::new();
             let pb: ProgressBar = ProgressBar::new(available_categories.len().try_into().unwrap());
-            // let mut best_coverage: usize = 0;
 
             // Iterate through each available category in the sorted list.
             // Generate new possible states and append them to the queue.
