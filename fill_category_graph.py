@@ -341,8 +341,9 @@ def main():
 	# solution = rsh.minimum_categories_for_coverage(
 	# 	cat2doc, missed_docs_set, missed_cats, use_bfs=False
 	# )
+	chunk_size = 500
 	solution = rsh.minimum_categories_for_coverage_new(
-		cat2doc, missed_docs_set, missed_cats
+		cat2doc, missed_docs_set, missed_cats, chunk_size
 	)
 
 	if not len(solution) == 0:
@@ -352,8 +353,6 @@ def main():
 
 	with open("filler_categories.json", "w+") as f:
 		json.dump(list(solution), f, indent=4)
-
-
 
 
 	###################################################################

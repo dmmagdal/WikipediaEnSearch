@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 // use pyo3::types::PyTuple;
 use std::collections::HashMap;
 use std::collections::HashSet;
+// use std::process::exit;
 use indicatif::ProgressBar;
 
 
@@ -102,7 +103,12 @@ fn filter_category_map(mut cat_to_doc: HashMap<String, Vec<String>>, missed_docs
 
 
 #[pyfunction]
-fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>, missed_docs: HashSet<String>, missed_cats: Vec<String>, use_bfs: bool) -> Py<PyAny> {
+fn minimum_categories_for_coverage(
+    mut cat_to_doc: HashMap<String, Vec<String>>, 
+    missed_docs: HashSet<String>, 
+    missed_cats: Vec<String>, 
+    use_bfs: bool
+) -> Py<PyAny> {
     // Filter out all documents that are not in the missed documents
     // set.
     let filtered_cat_to_doc: HashMap<String, Vec<String>> = filter_category_map_documents(
@@ -195,15 +201,6 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
                     }
                 }
                 let new_document_coverage: usize = covered_documents.len();
-    
-                // println!("solution:");
-                // for category in &new_solution {
-                //     println!("{category}");
-                // }
-                // println!("coverage: {new_document_coverage}");
-                // // println!("best coverage: {best_coverage}");
-                // println!("current coverage: {document_coverage}");
-                // println!();
     
                 // Skip appending states that do not increase the coverage.
                 if new_document_coverage <= document_coverage {
@@ -301,15 +298,6 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
                 }
                 let new_document_coverage: usize = covered_documents.len();
     
-                // println!("solution:");
-                // for category in &new_solution {
-                //     println!("{category}");
-                // }
-                // println!("coverage: {new_document_coverage}");
-                // // println!("best coverage: {best_coverage}");
-                // println!("current coverage: {document_coverage}");
-                // println!();
-    
                 // Skip appending states that do not increase the coverage.
                 if new_document_coverage <= document_coverage {
                     pb.inc(1);
@@ -359,7 +347,12 @@ fn minimum_categories_for_coverage(mut cat_to_doc: HashMap<String, Vec<String>>,
 }
 
 #[pyfunction]
-fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<String>>, missed_docs: HashSet<String>, missed_cats: Vec<String>) -> Py<PyAny> {
+fn minimum_categories_for_coverage_new(
+    mut cat_to_doc: HashMap<String, Vec<String>>, 
+    missed_docs: HashSet<String>, 
+    missed_cats: Vec<String>, 
+    chunk_size: usize
+) -> Py<PyAny> {
     // Filter out all documents that are not in the missed documents
     // set.
     let filtered_cat_to_doc: HashMap<String, Vec<String>> = filter_category_map_documents(
@@ -375,7 +368,6 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
 
     // Remove missed categories that have 0 document coverage.
     let mut filtered_missed_cats: HashSet<String> = HashSet::from_iter(missed_cats.clone());
-    let filtered_missed_cats_len: usize = filtered_missed_cats.len();
     for category in &missed_cats {
         if let Some(docs) = filtered_cat_to_doc.get(category) {
             if docs.len() == 0 {
@@ -383,9 +375,7 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
             }
         }
     }
-    assert_ne!(filtered_missed_cats.len(), filtered_missed_cats_len);
     let mut missed_cats_vec: Vec<String> = Vec::from_iter(filtered_missed_cats);
-    assert_ne!(missed_cats.len(), missed_cats_vec.len());
 
     // Sort missed categories by the number of (missed) documents
     // they correspond to.
@@ -402,7 +392,7 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
     });
 
     // Chunk the missed categories.
-    let chunk_size: usize = 1_000;
+    // let chunk_size: usize = 1_000;
     let mut category_chunks: Vec<Vec<String>> = Vec::new();
     let mut current_chunk: Vec<String> = Vec::new();
     let mut current_len: usize = 0;
@@ -420,7 +410,6 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
     if !current_chunk.is_empty() {
         category_chunks.push(current_chunk);
     }
-    println!("{}", category_chunks.len());
 
     let mut solution: HashSet<String> = HashSet::new();
     let mut is_solved: bool = false;
@@ -429,9 +418,15 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
     for (idx, chunk) in category_chunks.iter().enumerate() {
         println!("Searching chunk {}/{}", idx + 1, category_chunks.len());
         println!("Best coverage {}/{}", coverage, full_coverage);
+
+        // Local variables for state search for this chunk.
         let initial_state: (Vec<String>, usize, HashSet<String>) = (chunk.clone(), coverage, solution.clone());
         let mut queue: Vec<(Vec<String>, usize, HashSet<String>)> = [initial_state].to_vec();
         let mut visited: Vec<HashSet<String>> = Vec::new();
+
+        // Local variables to track coverage and best solution.
+        let mut local_solution: HashSet<String> = solution.clone();
+        let mut local_coverage: usize = coverage.clone();
 
         // Iterate through a heavily modified BFS to find the smallest
         // combination of categories that would cover the remaining missed
@@ -445,6 +440,10 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
             if document_coverage == full_coverage {
                 is_solved = true;
                 solution = current_solution.clone();
+                coverage = document_coverage.clone();
+
+                println!("New coverage {}/{}", coverage, full_coverage);
+
                 continue;
             }
 
@@ -454,11 +453,19 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
             if visited.contains(&current_solution) {
                 continue;
             }
+            else {
+                visited.push(current_solution.clone());
+            }
 
             // Set solution if its coverage beats the current coverage.
-            if document_coverage > coverage {
-                solution = current_solution.clone();
-                coverage = document_coverage.clone();
+            println!("Document coverage v local coverage {} {}", document_coverage, local_coverage);
+            // if document_coverage > coverage {
+            if document_coverage > local_coverage {
+                local_solution = current_solution.clone();
+                local_coverage = document_coverage.clone();
+
+                // println!("New coverage {}/{}", coverage, full_coverage);
+                println!("New coverage {}/{}", local_coverage, full_coverage);
             }
 
             // Sort the list of available categories, giving preference to
@@ -497,33 +504,48 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
                 }
                 let new_document_coverage: usize = covered_documents.len();
 
-                // Skip appending states that do not increase the coverage.
-                if new_document_coverage <= document_coverage {
-                    pb.inc(1);
-                    continue;
+                println!("New Document Coverage {}", new_document_coverage);
+                println!("Document Coverage {}", document_coverage);
+
+                // Only append new potential states that offer more 
+                // document coverage than the current one.
+                if new_document_coverage > document_coverage {
+                    println!("New coverage > document coverage");
+                    
+                    // Filter out the category from the list of
+                    // remaining categories.
+                    let mut remaining_categories: Vec<String> = available_categories.clone();
+                    remaining_categories.retain(|remaining_category| remaining_category != category);
+    
+                    // Initialize the new state and pass it into the
+                    // queue.
+                    let new_state: (Vec<String>, usize, HashSet<String>) = (remaining_categories.clone(), new_document_coverage.clone(), new_solution.clone());
+                    options.push(new_state);
+
                 }
 
-                // Remove the current category from the list of available 
-                // categories.
-                let mut remaining_categories: Vec<String> = available_categories.clone();
-                remaining_categories.retain(|remaining_category: &String| remaining_category != category);
-
-                // Create new state tuple and update the options list 
-                // accordingly. Also update the list of visited solutions 
-                // too.
-                let new_state: (Vec<String>, usize, HashSet<String>) = (remaining_categories, new_document_coverage, new_solution.clone());
-                options.push(new_state);
-                visited.push(new_solution.clone());
+                // Increment the progress bar
                 pb.inc(1);
             }
 
-            // Sort list of new state options by highest coverage (priority 
-            // goes to solutions that offer higher document coverage). 
-            // Append the sorted list to the queue.
+            // Sort list of new state options by highest coverage 
+            // (priority goes to solutions that offer higher document
+            // coverage). Append the sorted list to the queue.
             options.sort_by(
                 |a: &(Vec<String>, usize, HashSet<String>), b: &(Vec<String>, usize, HashSet<String>)| b.1.cmp(&a.1)
             );
             queue.extend(options);
+        }
+
+        println!("Local coverage {}", local_coverage);
+        println!("Global coverage {}", coverage);
+
+        // Update global solution and coverage after processing this chunk
+        if local_coverage > coverage {
+            solution = local_solution;
+            coverage = local_coverage;
+
+            println!("Updated global solution with chunk solution. Coverage: {}/{}", coverage, full_coverage);
         }
 
         if is_solved {
