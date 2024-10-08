@@ -424,7 +424,7 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
 
     let mut solution: HashSet<String> = HashSet::new();
     let mut is_solved: bool = false;
-    let coverage: usize = 0;
+    let mut coverage: usize = 0;
     let full_coverage: usize = missed_docs.len();
     for (idx, chunk) in category_chunks.iter().enumerate() {
         println!("Searching chunk {}/{}", idx + 1, category_chunks.len());
@@ -458,6 +458,7 @@ fn minimum_categories_for_coverage_new(mut cat_to_doc: HashMap<String, Vec<Strin
             // Set solution if its coverage beats the current coverage.
             if document_coverage > coverage {
                 solution = current_solution.clone();
+                coverage = document_coverage.clone();
             }
 
             // Sort the list of available categories, giving preference to
