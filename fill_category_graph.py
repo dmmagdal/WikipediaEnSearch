@@ -335,11 +335,14 @@ def main():
 	# del queue
 	# del visited
 	# gc.collect()
-	solution = rsh.minimum_categories_for_coverage(
-		cat2doc, missed_docs_set, missed_cats, use_bfs=True
-	)
-	solution = rsh.minimum_categories_for_coverage(
-		cat2doc, missed_docs_set, missed_cats, use_bfs=False
+	# solution = rsh.minimum_categories_for_coverage(
+	# 	cat2doc, missed_docs_set, missed_cats, use_bfs=True
+	# )
+	# solution = rsh.minimum_categories_for_coverage(
+	# 	cat2doc, missed_docs_set, missed_cats, use_bfs=False
+	# )
+	solution = rsh.minimum_categories_for_coverage_new(
+		cat2doc, missed_docs_set, missed_cats
 	)
 
 	if not len(solution) == 0:
