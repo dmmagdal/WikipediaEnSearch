@@ -90,7 +90,7 @@ def get_all_subcategories(category: str, max_depth: int = 1, current_depth: int 
 	return subcategories
 
 
-def get_all_subcategories_bfs(category: str, max_depth: int = 1) -> Dict[str, List[str]]:
+def get_all_subcategories_bfs(category: str, max_depth: int = 1, depth: int = 0) -> Dict[str, List[str]]:
 	'''
 	Use BFS to iteratively retrieve all categories and subcategories in
 		the wikipedia category tree.
@@ -102,9 +102,8 @@ def get_all_subcategories_bfs(category: str, max_depth: int = 1) -> Dict[str, Li
 	'''
 	visited = set()
 	subcategories = dict()
-	depth = 0
 
-	queue = deque([category, depth])
+	queue = deque([(category, depth)])
 
 	while len(queue) != 0:
 		current_category, current_depth = queue.popleft()
@@ -113,7 +112,7 @@ def get_all_subcategories_bfs(category: str, max_depth: int = 1) -> Dict[str, Li
 			continue
 	
 		# Get category page
-		cat_page = WIKI.page(f"Category:{category}")
+		cat_page = WIKI.page(f"Category:{current_category}")
 	
 		# Return if this category was already processed
 		if cat_page.title in visited:
@@ -124,9 +123,9 @@ def get_all_subcategories_bfs(category: str, max_depth: int = 1) -> Dict[str, Li
 		subcategories[current_category] = list()
 		for member in cat_page.categorymembers.values():
 			if member.ns == 14:  # Namespace 14 refers to categories
-				subcategory_name = cat_page.title.replace("Category:", "")
+				subcategory_name = member.title.replace("Category:", "")
 				subcategories[current_category].append(subcategory_name)
-				queue.append([subcategory_name, current_depth + 1])
+				queue.append((subcategory_name, current_depth + 1))
 
 	return subcategories
 
@@ -147,18 +146,26 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False) -> nx.DiGraph:
 		subcategories = get_all_subcategories_bfs(
 			all_categories, max_depth
 		)
+		
+		for cat, subcats in subcategories.items():
+			for subcat in subcats:
+				G.add_edge(cat, subcat)
 	else:
 		subcategories = get_all_subcategories(
 			all_categories, max_depth
 		)
 
-	# Helper function to add nodes/edges to the graph
-	def add_to_graph(cat, subcats):
-		for subcat, nested_subcats in subcats.items():
-			G.add_edge(cat, subcat)
-			add_to_graph(subcat, nested_subcats)
+		# Helper function to add nodes/edges to the graph
+		def add_to_graph(cat: str, subcats: Dict[str, List[str]]):
+			for subcat, nested_subcats in subcats.items():
+				G.add_edge(cat, subcat)
+				add_to_graph(subcat, nested_subcats)
 
-	add_to_graph(all_categories, subcategories)
+		add_to_graph(all_categories, subcategories)
+
+	assert G.number_of_nodes() != 0, "Graph should have at least one node"
+	assert G.number_of_edges() != 0, "Graph must have edges"
+
 	return G
 
 
