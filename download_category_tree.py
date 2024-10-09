@@ -7,6 +7,7 @@
 
 
 import argparse
+from collections import deque
 import json
 import os
 from typing import Dict, List, Set
@@ -89,8 +90,49 @@ def get_all_subcategories(category: str, max_depth: int = 1, current_depth: int 
 	return subcategories
 
 
+def get_all_subcategories_bfs(category: str, max_depth: int = 1) -> Dict[str, List[str]]:
+	'''
+	Use BFS to iteratively retrieve all categories and subcategories in
+		the wikipedia category tree.
+	@param: category (str), the current category.
+	@param: max_depth (int), the max depth of the category tree that was 
+		generated. Default is 1.
+	@return: returns all subcategories for the current category in the 
+		wikipedia category graph.
+	'''
+	visited = set()
+	subcategories = dict()
+	depth = 0
+
+	queue = deque([category, depth])
+
+	while len(queue) != 0:
+		current_category, current_depth = queue.popleft()
+
+		if current_depth > max_depth:
+			continue
+	
+		# Get category page
+		cat_page = WIKI.page(f"Category:{category}")
+	
+		# Return if this category was already processed
+		if cat_page.title in visited:
+			continue
+	
+		visited.add(cat_page.title)
+		
+		subcategories[current_category] = list()
+		for member in cat_page.categorymembers.values():
+			if member.ns == 14:  # Namespace 14 refers to categories
+				subcategory_name = cat_page.title.replace("Category:", "")
+				subcategories[current_category].append(subcategory_name)
+				queue.append([subcategory_name, current_depth + 1])
+
+	return subcategories
+
+
 # Build a graph with all categories and subcategories
-def build_full_graph(max_depth: int = 1) -> nx.DiGraph:
+def build_full_graph(max_depth: int = 1, use_bfs: bool = False) -> nx.DiGraph:
 	'''
 	Build the wikipedia category graph.
 	@param: max_depth (int), the maximum depth of category tree that
@@ -101,7 +143,14 @@ def build_full_graph(max_depth: int = 1) -> nx.DiGraph:
 	all_categories = "Main topic classifications"  # Root category to start from
 
 	# Recursively fetch all categories
-	subcategories = get_all_subcategories(all_categories, max_depth)
+	if use_bfs:
+		subcategories = get_all_subcategories_bfs(
+			all_categories, max_depth
+		)
+	else:
+		subcategories = get_all_subcategories(
+			all_categories, max_depth
+		)
 
 	# Helper function to add nodes/edges to the graph
 	def add_to_graph(cat, subcats):
@@ -309,7 +358,12 @@ def main():
 	parser.add_argument(
 		"--draw_graph",
 		action="store_true",
-		help="hether to draw and save the graph to png. Default is false/not specified."
+		help="Whether to draw and save the graph to png. Default is false/not specified."
+	)
+	parser.add_argument(
+		"--use_bfs",
+		action="store_true",
+		help="Whether to use BFS to the recursive DFS algorithms to build the graph. Default is false/not specified."
 	)
 
 	# Parse arguments.
@@ -319,7 +373,7 @@ def main():
 	depth = args.depth
 	
 	# Build the graph for all categories
-	G = build_full_graph(depth)
+	G = build_full_graph(depth, args.use_bfs)
 
 	# Save the graph to a file
 	save_path = os.path.join(
