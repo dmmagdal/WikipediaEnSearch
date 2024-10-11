@@ -10,6 +10,7 @@ import argparse
 from collections import deque
 import json
 import os
+import re
 from typing import Dict, List, Set
 
 import matplotlib.pyplot as plt
@@ -213,10 +214,12 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str =
 			file for file in os.listdir(save_dir)
 			if file.endswith(extension)
 		]
-		values = [
-			int(file.rstrip(f".{extension}").lstrip("wiki_categories_depth"))
-			for file in saved_graphs
-		]
+		values = []
+		pattern = r'wiki_categories_depth(\d+)'
+		for file in saved_graphs:
+			match = re.search(pattern, file)
+			if match:
+				values.append(int(match.group(1)))
 		filtered_values = [
 			value for value in values if value < max_depth
 		]
