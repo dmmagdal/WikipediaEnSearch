@@ -565,12 +565,14 @@ fn minimum_categories_for_coverage_new(
 
 
 #[pyfunction]
-fn get_leaves(graph: HashMap<String, Vec<String>>, max_depth: u32) -> Py<PyAny> {
+fn get_leaves(graph: HashMap<String, Vec<String>>, max_depth: u32, number_of_categories: u64) -> Py<PyAny> {
     // Single pass BFS (get depth while traversing and apply filter).
     let mut visited: HashSet<String> = HashSet::new();
     let start_node: (String, u32) = ("Main topic classifications".to_string(), 0);
     let mut queue: Vec<(String, u32)> = [start_node].to_vec();
-    let mut valid_categories: Vec<String> = Vec::new();
+    let mut valid_categories: Vec<(String, u32)> = Vec::new();
+
+    let pb: ProgressBar = ProgressBar::new(number_of_categories);
 
     while queue.len() != 0 {
         let (category, depth) = queue.remove(0);
@@ -581,15 +583,22 @@ fn get_leaves(graph: HashMap<String, Vec<String>>, max_depth: u32) -> Py<PyAny> 
 
         visited.insert(category.clone());
 
-        if depth <= max_depth && !graph.contains_key(&category) {
-            valid_categories.push(category.clone());
-        }
+        // if depth <= max_depth && !graph.contains_key(&category) {
+        //     valid_categories.push(category.clone());
+        // }
 
         if let Some(children) = graph.get(&category) {
-            for child in children {
-                queue.push((child.to_string(), depth + 1));
+            if children.len() == 0 && depth <= max_depth {
+                valid_categories.push((category.clone(), depth ));
+            }
+            else {
+                for child in children {
+                    queue.push((child.to_string(), depth + 1));
+                }
             }
         }
+
+        pb.inc(1);
     }
 
     return Python::with_gil(|py: Python| {
