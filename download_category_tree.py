@@ -50,7 +50,6 @@ def write_data_to_msgpack(path: str, data: Dict) -> None:
 		f.write(packed)
 
 
-# Function to recursively get all categories and subcategories
 def get_all_subcategories(category: str, max_depth: int = 1, current_depth: int = 0, visited: Set[str] = None) -> Dict[str, List[str]]:
 	'''
 	Recursively retrieve all categories and subcategories in the 
@@ -90,6 +89,45 @@ def get_all_subcategories(category: str, max_depth: int = 1, current_depth: int 
 	return subcategories
 
 
+def get_depth(G: nx.DiGraph, node: str) -> int:
+	'''
+	Use BFS to iteratively retrieve the depth for the node.
+	@param: G (nx.DiGraph), 
+	@param: node (str), the target category in the category tree.
+	@return: returns depth of the node in the category graph.
+	'''
+	# Initialize variables for the BFS search.
+	visited = set()
+	root_node = ("Main topic classifications", 0)
+	queue = [root_node]
+
+	# Loop while queue is populated.
+	while len(queue) != 0:
+		# Pop the state from the queue and unpack it.
+		current_node, depth = queue.pop(0)
+
+		# Skip if the node is already visited.
+		if current_node in visited:
+			continue
+	
+		# Add the node to the visited node set.
+		visited.add(current_node)
+
+		# if the current node is the target node, return the current 
+		# depth for the node.
+		if current_node == node:
+			return depth
+		
+		# List the children for the current node.
+		children = G.successors(current_node)
+		for child in children:
+			# Append the child to the queue and its depth.
+			queue.append((child, depth + 1))
+
+	# Return -1 (node was not found in the graph).
+	return -1
+
+
 def get_all_subcategories_bfs(category: str, max_depth: int = 1, depth: int = 0) -> Dict[str, List[str]]:
 	'''
 	Use BFS to iteratively retrieve all categories and subcategories in
@@ -100,42 +138,60 @@ def get_all_subcategories_bfs(category: str, max_depth: int = 1, depth: int = 0)
 	@return: returns all subcategories for the current category in the 
 		wikipedia category graph.
 	'''
+	# Initialize the set for visited categories and the (sub) graph.
 	visited = set()
 	subcategories = dict()
 
+	# Initialize the queue.
 	queue = deque([(category, depth)])
 
+	# Continue while the queue is populated.
 	while len(queue) != 0:
+		# Pop the state from the queue and unpack the tuple.
 		current_category, current_depth = queue.popleft()
 
+		# If the current depth is greater than the mas depth, continue
+		# to the next state in the queue.
 		if current_depth > max_depth:
 			continue
 	
-		# Get category page
+		# Get category page.
 		cat_page = WIKI.page(f"Category:{current_category}")
 	
 		# Return if this category was already processed
 		if cat_page.title in visited:
 			continue
-	
+		
+		# Add the current category to the visited categories set.
 		visited.add(cat_page.title)
 		
+		# Initialize a list for the subcategories of the current 
+		# category.
 		subcategories[current_category] = list()
+
+		# Iterate through each subcategory in the current category.
 		for member in cat_page.categorymembers.values():
 			if member.ns == 14:  # Namespace 14 refers to categories
+				# Isolate the subcategory name and append the 
+				# subcategory and it's depth to the end of the queue.
 				subcategory_name = member.title.replace("Category:", "")
 				subcategories[current_category].append(subcategory_name)
 				queue.append((subcategory_name, current_depth + 1))
 
+	# Return the (sub) graph.
 	return subcategories
 
 
-# Build a graph with all categories and subcategories
-def build_full_graph(max_depth: int = 1, use_bfs: bool = False) -> nx.DiGraph:
+def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str = "graphml") -> nx.DiGraph:
 	'''
 	Build the wikipedia category graph.
 	@param: max_depth (int), the maximum depth of category tree that
 		will be explored. Default is 1.
+	@param: use_bfs (bool), whether to use the BFS algorithm to 
+		populate the graph or to use the older graph population 
+		algorithm. Default is False.
+	@param: extension (str), what the file extension for the latest 
+		graph checkpoint file is. Default is "graphml".
 	@return: returns the wikipedia category graph.
 	'''
 	G = nx.DiGraph()  # Directed graph
@@ -143,13 +199,87 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False) -> nx.DiGraph:
 
 	# Recursively fetch all categories
 	if use_bfs:
-		subcategories = get_all_subcategories_bfs(
-			all_categories, max_depth
+		# Detect existing checkpoint.
+		save_dir = "./wiki_category_graphs"
+		save_path = os.path.join(
+			save_dir,
+			f"wiki_categories_depth{max_depth}.{extension}"
 		)
+		if os.path.exists(save_path):
+			return load_graph(save_path)
+
+		# Detect the largest checkpoint less than the target depth.
+		saved_graphs = [
+			file for file in os.listdir(save_dir)
+			if file.endswith(extension)
+		]
+		values = [
+			int(file.rstrip(f".{extension}").lstrip("wiki_categories_depth"))
+			for file in saved_graphs
+		]
+		filtered_values = [
+			value for value in values if value < max_depth
+		]
+
+		# Initialize the graph and checkpoint depths depending on the
+		# previously saved graphs.
+		if len(filtered_values) > 0:
+			# Load the last checkpoint graph.
+			checkpoint_depth = max(filtered_values)
+			last_checkpoint = os.path.join(
+				save_dir,
+				f"wiki_categories_depth{checkpoint_depth}.{extension}"
+			)
+			G = load_graph(last_checkpoint, extension)
+		else:
+			# Initialize a new graph.
+			checkpoint_depth = 0
+			G = nx.DiGraph()
 		
-		for cat, subcats in subcategories.items():
-			for subcat in subcats:
-				G.add_edge(cat, subcat)
+		# Increment max depths by 5 up until the max depth.
+		for intermediate_max_depth in range(checkpoint_depth + 5, max_depth, 5):
+			# Identify the leaf nodes in the category graph that are
+			# below the maximum depth level.
+			if checkpoint_depth == 0:
+				categories = [all_categories]
+			else:
+				categories = [
+					(node, get_depth(G, node))
+					for node in list(G.nodes())
+					if get_depth(G, node) < intermediate_max_depth
+				]
+
+			# Verify that the depths of each leaf node are valid.
+			assert -1 not in [category[1] for category in categories],\
+				f"Invalid depth detected in categories list: {', '.join(categories)}"
+			
+			# Iterate through the leaf nodes and depths. Build out the
+			# subtree and add that subtree to the graph (update the
+			# graph).
+			for category, depth in categories:
+				subcategories = get_all_subcategories_bfs(
+					category, intermediate_max_depth - depth
+				)
+
+				for cat, subcats in subcategories.items():
+					for subcat in subcats:
+						G.add_edge(cat, subcat)
+
+			# Save the graph.
+			checkpoint_path = os.path.join(
+				save_dir,
+				f"wiki_categories_depth{intermediate_max_depth}.{extension}"
+			)
+			save_graph(G, checkpoint_path, extension)
+
+		# OLD. KEEP IF IT DOESN'T WORK.
+		# subcategories = get_all_subcategories_bfs(
+		# 	all_categories, max_depth
+		# )
+		#
+		# for cat, subcats in subcategories.items():
+		# 	for subcat in subcats:
+		# 		G.add_edge(cat, subcat)
 	else:
 		subcategories = get_all_subcategories(
 			all_categories, max_depth
@@ -169,7 +299,6 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False) -> nx.DiGraph:
 	return G
 
 
-# Save the graph to a file
 def save_graph(G: nx.DiGraph, file_name: str, format: str = "graphml") -> None:
 	'''
 	Save the graph to a file.
@@ -202,7 +331,6 @@ def save_graph(G: nx.DiGraph, file_name: str, format: str = "graphml") -> None:
 		raise ValueError(f"Unsupported format: choose {', '.join(valid_extensions)}.")
 
 
-# Load the graph from a file
 def load_graph(file_name: str, format: str = "graphml") -> nx.DiGraph:
 	'''
 	Load the graph from a file.
@@ -236,7 +364,6 @@ def load_graph(file_name: str, format: str = "graphml") -> nx.DiGraph:
 	return graph.to_directed()
 
 
-# Visualize the graph using Matplotlib
 def draw_graph(G: nx.DiGraph, depth: int = 1) -> None:
 	'''
 	Draw the graph on matplotlib and save the figure to a png file.
@@ -372,15 +499,23 @@ def main():
 		action="store_true",
 		help="Whether to use BFS to the recursive DFS algorithms to build the graph. Default is false/not specified."
 	)
+	parser.add_argument(
+		"--extension",
+		type=str, 
+		default="graphml", 
+		help="The file extension that should be used to save/load the graph. Default is 'graphml'"
+	)
 
 	# Parse arguments.
 	args = parser.parse_args()
 
 	# Control the depth of subcategory exploration.
 	depth = args.depth
+	use_bfs = args.use_bfs
+	extension = args.extension
 	
 	# Build the graph for all categories
-	G = build_full_graph(depth, args.use_bfs)
+	G = build_full_graph(depth, use_bfs, extension)
 
 	# Save the graph to a file
 	save_path = os.path.join(
