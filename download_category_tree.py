@@ -509,7 +509,7 @@ def main():
 	# Parse arguments.
 	args = parser.parse_args()
 
-	# Control the depth of subcategory exploration.
+	# Unpack arguments.
 	depth = args.depth
 	use_bfs = args.use_bfs
 	extension = args.extension
