@@ -246,7 +246,7 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str =
 				categories = [
 					(node, get_depth(G, node))
 					for node in list(G.nodes())
-					if get_depth(G, node) < intermediate_max_depth
+					if len(list(G.successors(node))) == 0 and get_depth(G, node) < intermediate_max_depth
 				]
 
 			# Verify that the depths of each leaf node are valid.
