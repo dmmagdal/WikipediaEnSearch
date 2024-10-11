@@ -240,7 +240,8 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str =
 			G = nx.DiGraph()
 		
 		# Increment max depths by 5 up until the max depth.
-		for intermediate_max_depth in range(checkpoint_depth + 5, max_depth, 5):
+		offset = 5
+		for intermediate_max_depth in range(checkpoint_depth + offset, max_depth, offset):
 			# Identify the leaf nodes in the category graph that are
 			# below the maximum depth level.
 			if checkpoint_depth == 0:
