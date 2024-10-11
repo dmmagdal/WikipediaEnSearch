@@ -13,6 +13,8 @@ import os
 import re
 from typing import Dict, List, Set
 
+import rust_search_helpers as rsh
+
 import matplotlib.pyplot as plt
 import msgpack
 import networkx as nx
@@ -242,16 +244,23 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str =
 		# Increment max depths by 5 up until the max depth.
 		offset = 5
 		for intermediate_max_depth in range(checkpoint_depth + offset, max_depth, offset):
+			print(f"Building category tree up to level {intermediate_max_depth}")
+			
 			# Identify the leaf nodes in the category graph that are
 			# below the maximum depth level.
 			if checkpoint_depth == 0:
 				categories = [all_categories]
 			else:
-				categories = [
-					(node, get_depth(G, node))
-					for node in list(G.nodes())
-					if len(list(G.successors(node))) == 0 and get_depth(G, node) < intermediate_max_depth
-				]
+				# categories = []
+				# for node in tqdm(list(G.nodes())):
+				# 	node_depth = get_depth(G, node)
+				# 	if len(list(G.successors(node))) == 0 and node_depth < intermediate_max_depth:
+				# 		categories.append((node, node_depth))
+				categories = rsh.get_leaves(nx.to_dict_of_lists(G), intermediate_max_depth)
+
+			print(f"Number of nodes in graph: {G.number_of_nodes()}")
+			print(f"Number of categories: {len(categories)}")
+			assert len(categories) != 0, "Expected there to leaf nodes to build off of."
 
 			# Verify that the depths of each leaf node are valid.
 			assert -1 not in [category[1] for category in categories],\
@@ -260,7 +269,7 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str =
 			# Iterate through the leaf nodes and depths. Build out the
 			# subtree and add that subtree to the graph (update the
 			# graph).
-			for category, depth in categories:
+			for category, depth in tqdm(categories):
 				subcategories = get_all_subcategories_bfs(
 					category, intermediate_max_depth - depth
 				)
