@@ -514,7 +514,7 @@ def main():
 		"--extension",
 		type=str, 
 		default="graphml", 
-		help="The file extension that should be used to save/load the graph. Default is 'graphml'"
+		help="The file extension that should be used to save/load the graph. Default is 'graphml'."
 	)
 
 	# Parse arguments.
