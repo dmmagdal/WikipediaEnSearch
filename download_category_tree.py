@@ -11,6 +11,7 @@ from collections import deque
 import json
 import os
 import re
+import time
 from typing import Dict, List, Set
 
 import rust_search_helpers as rsh
@@ -266,7 +267,13 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str =
 			# Iterate through the leaf nodes and depths. Build out the
 			# subtree and add that subtree to the graph (update the
 			# graph).
-			for item in tqdm(categories):
+			for idx, item in enumerate(tqdm(categories)):
+				# Insert sleep for 4 hours to make sure that we don't
+				# get HTTP errors (likely due to too many requests/rate
+				# limits).
+				if idx > 0 and idx % 100_000 == 0:
+					time.sleep(4 * 3600)
+
 				category, depth = item
 				subcategories = get_all_subcategories_bfs(
 					category, intermediate_max_depth - depth
