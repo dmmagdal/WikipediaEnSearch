@@ -244,7 +244,7 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str =
 		
 		# Increment max depths by 5 up until the max depth.
 		offset = 5
-		for intermediate_max_depth in range(checkpoint_depth + offset, max_depth, offset):
+		for intermediate_max_depth in range(checkpoint_depth + offset, max_depth + 1, offset):
 			print(f"Building category tree up to level {intermediate_max_depth}")
 			
 			# Identify the leaf nodes in the category graph that are
