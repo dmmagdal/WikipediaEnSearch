@@ -222,33 +222,6 @@ def main():
 	tokenizer, model = load_model(config, device=device)
 
 	###################################################################
-	# COMPUTE DOWNLOAD GRAPH EMBEDDINGS
-	###################################################################
-	vector_metadata = []
-
-	for node in tqdm(downloaded_graph_nodes):
-		embedding = embed_text(tokenizer, model, device, node)
-		vector_metadata.append({"category": node, "vector": embedding})
-	# with torch.no_grad():
-	# 	for node in tqdm(downloaded_graph_nodes):
-	# 		output = model(
-	# 			**tokenizer(
-	# 				node,
-	# 				add_special_tokens=False,
-	# 				padding="max_length",
-	# 				return_tensors="pt"
-	# 			).to(device)
-	# 		)
-	# 
-	# 		embedding = output[0].mean(dim=1)
-	# 		embedding = embedding.to("cpu")
-	# 		embedding = embedding.numpy()[0]
-	#
-	# 		vector_metadata.append(
-	# 			{"category": node, "vector": embedding}
-	# 		)
-
-	###################################################################
 	# INTIALIZE VECTOR DB AND STORE DOWNLOAD GRAPH EMBEDDINGS
 	###################################################################
 	uri = "./data/lance_db"
@@ -283,8 +256,43 @@ def main():
 	else:
 		table = db.open_table(table_name)
 	
+	###################################################################
+	# COMPUTE DOWNLOAD GRAPH EMBEDDINGS
+	###################################################################
+	vector_metadata = []
+
+	for node in tqdm(downloaded_graph_nodes):
+		results = table.search()\
+			.where(f"category = {node}")\
+			.limit(1)\
+			.to_list()
+		if len(results) != 0:
+			continue
+
+		embedding = embed_text(tokenizer, model, device, node)
+		vector_metadata.append({"category": node, "vector": embedding})
+	# with torch.no_grad():
+	# 	for node in tqdm(downloaded_graph_nodes):
+	# 		output = model(
+	# 			**tokenizer(
+	# 				node,
+	# 				add_special_tokens=False,
+	# 				padding="max_length",
+	# 				return_tensors="pt"
+	# 			).to(device)
+	# 		)
+	# 
+	# 		embedding = output[0].mean(dim=1)
+	# 		embedding = embedding.to("cpu")
+	# 		embedding = embedding.numpy()[0]
+	#
+	# 		vector_metadata.append(
+	# 			{"category": node, "vector": embedding}
+	# 		)
+
 	# Add the metadata.
-	table.add(data=vector_metadata, mode="append")
+	if len(vector_metadata) != 0:
+		table.add(data=vector_metadata, mode="append")
 
 
 	###################################################################
