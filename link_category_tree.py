@@ -6,10 +6,12 @@
 
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
+import math
 import os
 import pyarrow as pa
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Any
 
 import lancedb
 import msgpack
@@ -114,6 +116,21 @@ def load_graph(file_name: str, format: str = "graphml") -> nx.DiGraph:
 	return graph.to_directed()
 
 
+def preprocess_category_text(category: str) -> str:
+	'''
+	Clean the category text before it is stored.
+	@param: category (str), the category text string.
+	@return: returns the category text string (cleaned).
+	'''
+	# Remove quote characters (double """ and single '') from the 
+	# category string (this will interfere with the SQL commands to 
+	# query a category).
+	category = category.replace("'", "").replace('"', "")
+
+	# Return the cleaned category string.
+	return category
+
+
 def embed_text(tokenizer: AutoTokenizer, model: AutoModel, device: str, text: str) -> np.ndarray:
 	'''
 	Embed the text with the given tokenizer and model.
@@ -148,6 +165,27 @@ def embed_text(tokenizer: AutoTokenizer, model: AutoModel, device: str, text: st
 	return embedding
 
 
+def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, device: str, table: lancedb.table, categories: List[str]) -> List[Dict[str, Any]]:
+	metadata = []
+
+	for node in tqdm(categories):
+		# Query the vector DB for the category.
+		results = table.search()\
+			.where(f"category = '{node}'")\
+			.limit(1)\
+			.to_list()
+
+		# If the category does exist already, skip the entry.
+		if len(results) != 0:
+			continue
+
+		# Embed the category and add it to the vector metadata.
+		embedding = embed_text(tokenizer, model, device, node)
+		metadata.append({"category": node, "vector": embedding})
+
+	return metadata
+
+
 def main():
 	'''
 	Main method. Process the word to document and document to word 
@@ -178,6 +216,12 @@ def main():
 		action="store_true",
 		help="Whether to clear the table (if found in the DB) before adding the new data. Default is false/not specified."
 	)
+	parser.add_argument(
+		"--num_thread",
+		type=int,
+		default=1,
+		help="How many threads to use to process the data. Default is 1/not specified."
+	)
 
 	# Parse arguments.
 	args = parser.parse_args()
@@ -198,7 +242,14 @@ def main():
 
 	# Load the downloaded graph.
 	downloaded_graph = load_graph(downloaded_graph_path, extension)
-	downloaded_graph_nodes = list(downloaded_graph.nodes())
+	downloaded_graph_nodes = [
+		preprocess_category_text(node) 
+		for node in list(downloaded_graph.nodes())
+	]
+
+	# NOTE:
+	# Be sure to process the category names for the table AND the final
+	# graph or else the strings wont match.
 
 	###################################################################
 	# EMBEDDING MODEL SETUP
@@ -237,7 +288,6 @@ def main():
 	print(f"Searching for table '{table_name}' in database")
 	print(f"Table found in database: {table_in_db}")
 
-
 	# Initialize schema (this will be passed to the database when 
 	# creating a new, empty table in the vector database).
 	schema = pa.schema([
@@ -261,16 +311,43 @@ def main():
 	###################################################################
 	vector_metadata = []
 
-	for node in tqdm(downloaded_graph_nodes):
-		results = table.search()\
-			.where(f"category = {node}")\
-			.limit(1)\
-			.to_list()
-		if len(results) != 0:
-			continue
+	chunk_size = math.ceil(len(downloaded_graph_nodes) / args.num_thread)
+	graph_nodes_chunks = [
+		downloaded_graph_nodes[i:i + chunk_size]
+		for i in range(0, len(downloaded_graph_nodes), chunk_size)
+	]
+	args_list = [
+		(tokenizer, model, device, table, node_chunk)
+		for node_chunk in graph_nodes_chunks
+	]
+	with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+		print("Embedding downloaded graph categories to vectors:")
+		results = executor.map(
+			lambda args: embed_all_unseen_categories(*args), 
+			args_list
+		)
 
-		embedding = embed_text(tokenizer, model, device, node)
-		vector_metadata.append({"category": node, "vector": embedding})
+		for result in results:
+			vector_metadata += result
+
+	# for node in tqdm(downloaded_graph_nodes):
+	# 	# Query the vector DB for the category.
+	# 	# print(node)
+	# 	results = table.search()\
+	# 		.where(f"category = '{node}'")\
+	# 		.limit(1)\
+	# 		.to_list()
+	# 	# print(results)
+	# 	# print(len(results))
+	# 	# exit()
+	#
+	# 	# If the category does exist already, skip the entry.
+	# 	if len(results) != 0:
+	# 		continue
+	#
+	# 	# Embed the category and add it to the vector metadata.
+	# 	embedding = embed_text(tokenizer, model, device, node)
+	# 	vector_metadata.append({"category": node, "vector": embedding})
 	# with torch.no_grad():
 	# 	for node in tqdm(downloaded_graph_nodes):
 	# 		output = model(
@@ -292,7 +369,9 @@ def main():
 
 	# Add the metadata.
 	if len(vector_metadata) != 0:
-		table.add(data=vector_metadata, mode="append")
+		print(len(vector_metadata))
+		print("Adding missing embeddings to vector DB.")
+		# table.add(data=vector_metadata, mode="append")
 
 
 	###################################################################
