@@ -9,6 +9,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
 import math
+import multiprocessing as mp
 import os
 import pyarrow as pa
 from typing import Dict, List, Set, Any
@@ -222,6 +223,12 @@ def main():
 		default=1,
 		help="How many threads to use to process the data. Default is 1/not specified."
 	)
+	parser.add_argument(
+		"--num_proc",
+		type=int,
+		default=1,
+		help="How many processors to use to process the data. Default is 1/not specified."
+	)
 
 	# Parse arguments.
 	args = parser.parse_args()
@@ -311,6 +318,12 @@ def main():
 	###################################################################
 	vector_metadata = []
 
+	# NOTE:
+	# Runtime on server
+	# Single thread/processor: 12 hours (lowest RAM usage)
+	# 12 threads: 
+	# 12 processor: (highest RAM usage)
+
 	chunk_size = math.ceil(len(downloaded_graph_nodes) / args.num_thread)
 	graph_nodes_chunks = [
 		downloaded_graph_nodes[i:i + chunk_size]
@@ -320,15 +333,25 @@ def main():
 		(tokenizer, model, device, table, node_chunk)
 		for node_chunk in graph_nodes_chunks
 	]
-	with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-		print("Embedding downloaded graph categories to vectors:")
-		results = executor.map(
-			lambda args: embed_all_unseen_categories(*args), 
-			args_list
-		)
+	if args.num_proc > 1:
+		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
+			print("Embedding downloaded graph categories to vectors:")
+			results = pool.starmap(
+				embed_all_unseen_categories, args_list
+			)
 
-		for result in results:
-			vector_metadata += result
+			for result in results:
+				vector_metadata += result
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			print("Embedding downloaded graph categories to vectors:")
+			results = executor.map(
+				lambda args: embed_all_unseen_categories(*args), 
+				args_list
+			)
+		
+			for result in results:
+				vector_metadata += result
 
 	# for node in tqdm(downloaded_graph_nodes):
 	# 	# Query the vector DB for the category.
@@ -383,4 +406,7 @@ def main():
 
 
 if __name__ == '__main__':
+	# Required to initialize models on GPU for multiprocessing. Placed
+	# here due to recommendation from official python documentation.
+	mp.set_start_method("spawn", force=True)
 	main()
