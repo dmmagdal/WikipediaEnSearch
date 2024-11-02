@@ -530,5 +530,6 @@ def main():
 if __name__ == '__main__':
 	# Required to initialize models on GPU for multiprocessing. Placed
 	# here due to recommendation from official python documentation.
+	torch.multiprocessing.set_start_method("spawn", force=True)
 	mp.set_start_method("spawn", force=True)
 	main()
