@@ -1,4 +1,5 @@
 use pyo3::prelude::*;
+use std::any::Any;
 // use pyo3::types::PyTuple;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -607,6 +608,52 @@ fn get_leaves(graph: HashMap<String, Vec<String>>, max_depth: u32, number_of_cat
 }
 
 
+#[pyfunction]
+fn get_graph_depths(
+    graph: HashMap<String, Vec<String>>, 
+    number_of_categories: u64
+) -> Py<PyAny> {
+    // Single pass BFS (get depth while traversing and apply filter).
+    let mut visited: HashSet<String> = HashSet::new();
+    let start_node: (String, u32) = ("Main topic classifications".to_string(), 0);
+    let mut queue: Vec<(String, u32)> = [start_node].to_vec();
+
+    let pb: ProgressBar = ProgressBar::new(number_of_categories);
+
+    while queue.len() != 0 {
+        let (category, depth) = queue.remove(0);
+
+        if visited.contains(&category) {
+            continue;
+        }
+
+        visited.insert(category.clone());
+
+        if let Some(children) = graph.get(&category) {
+            if children.len() != 0 {
+                for child in children {
+                    queue.push((child.to_string(), depth + 1));
+                }
+            }
+        }
+
+        pb.inc(1);
+    }
+
+    return Python::with_gil(|py: Python| {
+        visited.clone().to_object(py)
+    });
+}
+
+#[pyfunction]
+fn set_difference(a: HashSet<String>, b: HashSet<String>) -> Vec<String> {//Py<PyAny> {
+    // return Python::with_gil(|py: Python| {
+    //     b.difference(&a).cloned().collect().to_object(py)
+    // });
+    b.difference(&a).cloned().collect()
+}
+
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn rust_search_helpers(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -615,5 +662,6 @@ fn rust_search_helpers(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(verify_filtered_category_map, m)?)?;
     m.add_function(wrap_pyfunction!(minimum_categories_for_coverage_new, m)?)?;
     m.add_function(wrap_pyfunction!(get_leaves, m)?)?;
+    m.add_function(wrap_pyfunction!(set_difference, m)?)?;
     Ok(())
 }

@@ -23,6 +23,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
 
 from preprocess import load_model
+import rust_search_helpers as rsh
 
 
 def load_data_from_msgpack(path: str) -> Dict:
@@ -38,6 +39,32 @@ def load_data_from_msgpack(path: str) -> Dict:
 	return msgpack.unpackb(byte_data)
 
 
+def load_data_from_json(path: str) -> Dict:
+	'''
+	Load a data file (to dictionary) from either a file given the path.
+	@param: path (str), the path of the data file that is to be loaded.
+	@return: Returns a python dictionary containing the structured data
+		from the loaded data file.
+	'''
+	with open(path, "r") as f:
+		return json.load(f)
+	
+
+def load_data_file(path: str, use_json: bool = False) -> Dict:
+	'''
+	Load a data file (to dictionary) from either a JSON or msgpack file
+		given the path.
+	@param: path (str), the path of the data file that is to be loaded.
+	@param: use_json (bool), whether to load the data file using JSON 
+		msgpack (default is False).
+	@return: Returns a python dictionary containing the structured data
+		from the loaded data file.
+	'''
+	if use_json:
+		return load_data_from_json(path)
+	return load_data_from_msgpack(path)
+
+
 def write_data_to_msgpack(path: str, data: Dict) -> None:
 	'''
 	Write data (dictionary) to a msgpack file given the path.
@@ -50,6 +77,36 @@ def write_data_to_msgpack(path: str, data: Dict) -> None:
 	with open(path, 'wb+') as f:
 		packed = msgpack.packb(data)
 		f.write(packed)
+
+
+def write_data_to_json(path: str, data: Dict) -> None:
+	'''
+	Write data (dictionary) to a json file given the path.
+	@param: path (str), the path of the data file that is to be 
+		written/created.
+	@param: data (Dict), the structured data (dictionary) that is to be
+		written to the file.
+	@return: returns nothing.
+	'''
+	with open(path, "w+") as f:
+		json.dump(data, f, indent=4)
+
+
+def write_data_file(path: str, data: Dict, use_json: bool = False) -> None:
+	'''
+	Write data (dictionary) to either a JSON or msgpack file given the
+		path.
+	@param: path (str), the path of the data file that is to be loaded.
+	@param: data (Dict), the structured data (dictionary) that is to be
+		written to the file.
+	@param: use_json (bool), whether to write the data file to a JSON 
+		or msgpack (default is False).
+	@return: returns nothing.
+	'''
+	if use_json:
+		write_data_to_json(path, data)
+	else:
+		write_data_to_msgpack(path, data)
 
 
 def save_graph(G: nx.DiGraph, file_name: str, format: str = "graphml") -> None:
@@ -229,6 +286,11 @@ def main():
 		default=1,
 		help="How many processors to use to process the data. Default is 1/not specified."
 	)
+	parser.add_argument(
+		"--use_json",
+		action="store_true",
+		help="Whether to use JSON or msgpack for loading metadata files. Default is false/not specified."
+	)
 
 	# Parse arguments.
 	args = parser.parse_args()
@@ -237,6 +299,8 @@ def main():
 	depth = args.depth
 	extension = args.extension
 	refresh_table = args.refresh_table
+	use_json = args.use_json
+	metadata_extension = "json" if use_json else "msgpack"
 
 	# Isolate downloaded graph and verify its path.
 	downloaded_graph_path = os.path.join(
@@ -397,9 +461,58 @@ def main():
 		print("Adding missing embeddings to vector DB.")
 		table.add(data=vector_metadata, mode="append")
 
-
 	###################################################################
 	# COMPUTE REMAINING CATEGORY EMBEDDINGS
+	###################################################################
+	new_vector_metadata = []
+
+	# Load categories from dataset.
+	cat_to_doc_path = os.path.join(
+		config["preprocessing"]["category_cache_path"],
+		f"cat_to_doc.{metadata_extension}"
+	)
+	cat_to_docs = load_data_file(cat_to_doc_path, use_json)
+	missing_categories = rsh.set_difference(
+		set(downloaded_graph_nodes), set(cat_to_docs.keys())
+	)
+
+	chunk_size = math.ceil(len(downloaded_graph_nodes) / divisor)
+	category_chunks = [
+		missing_categories[i:i + chunk_size]
+		for i in range(0, len(missing_categories), chunk_size)
+	]
+	args_list = [
+		(tokenizer, model, device, table, node_chunk)
+		for node_chunk in category_chunks
+	]
+	print("Embedding remaining categories to vectors:")
+
+	if args.num_proc > 1:
+		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
+			results = pool.starmap(
+				embed_all_unseen_categories, args_list
+			)
+
+			for result in results:
+				vector_metadata += result
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			results = executor.map(
+				lambda args: embed_all_unseen_categories(*args), 
+				args_list
+			)
+		
+			for result in results:
+				vector_metadata += result
+
+	# Add the metadata.
+	if len(new_vector_metadata) != 0:
+		print(len(new_vector_metadata))
+		print("Adding remaining missing embeddings to vector DB.")
+		table.add(data=new_vector_metadata, mode="append")
+
+	###################################################################
+	# UPDATE GRAPH WITH MOST SIMILAR CATEGORIES AS CHILDREN
 	###################################################################
 
 	# Exit the program.
