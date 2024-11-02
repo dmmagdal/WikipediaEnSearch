@@ -347,6 +347,11 @@ def main():
 		elif torch.backends.mps.is_available():
 			device = "mps"
 
+	# NOTE:
+	# Multiprocessing doesn't seem to play well with MPS device. If
+	# using multiprocessing on Apple Silicon device, use the --use_cpu
+	# flag to force the embedding model to run on CPU only.
+
 	# Check for embedding model files and download them if necessary.
 	tokenizer, model = load_model(config, device=device)
 
@@ -529,6 +534,5 @@ def main():
 if __name__ == '__main__':
 	# Required to initialize models on GPU for multiprocessing. Placed
 	# here due to recommendation from official python documentation.
-	# torch.multiprocessing.set_start_method("spawn", force=True)
 	mp.set_start_method("spawn", force=True)
 	main()
