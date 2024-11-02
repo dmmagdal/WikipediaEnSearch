@@ -341,12 +341,11 @@ def main():
 
 	# Configure GPU for embeddings.
 	device = "cpu"
-	if torch.cuda.is_available():
-		device = "cuda"
-	elif torch.backends.mps.is_available():
-		device = "mps"
-	elif use_cpu:
-		device = "cpu"
+	if not use_cpu:
+		if torch.cuda.is_available():
+			device = "cuda"
+		elif torch.backends.mps.is_available():
+			device = "mps"
 
 	# Check for embedding model files and download them if necessary.
 	tokenizer, model = load_model(config, device=device)
@@ -530,6 +529,6 @@ def main():
 if __name__ == '__main__':
 	# Required to initialize models on GPU for multiprocessing. Placed
 	# here due to recommendation from official python documentation.
-	torch.multiprocessing.set_start_method("spawn", force=True)
+	# torch.multiprocessing.set_start_method("spawn", force=True)
 	mp.set_start_method("spawn", force=True)
 	main()
