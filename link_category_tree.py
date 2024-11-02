@@ -291,6 +291,11 @@ def main():
 		action="store_true",
 		help="Whether to use JSON or msgpack for loading metadata files. Default is false/not specified."
 	)
+	parser.add_argument(
+		"--use_cpu",
+		action="store_true",
+		help="Whether to force machine to use CPU instead of detected GPU. Default is false/not specified."
+	)
 
 	# Parse arguments.
 	args = parser.parse_args()
@@ -301,6 +306,7 @@ def main():
 	refresh_table = args.refresh_table
 	use_json = args.use_json
 	metadata_extension = "json" if use_json else "msgpack"
+	use_cpu = args.use_cpu
 
 	# Isolate downloaded graph and verify its path.
 	downloaded_graph_path = os.path.join(
@@ -339,6 +345,8 @@ def main():
 		device = "cuda"
 	elif torch.backends.mps.is_available():
 		device = "mps"
+	elif use_cpu:
+		device = "cpu"
 
 	# Check for embedding model files and download them if necessary.
 	tokenizer, model = load_model(config, device=device)
