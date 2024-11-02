@@ -321,10 +321,11 @@ def main():
 	# NOTE:
 	# Runtime on server
 	# Single thread/processor: 12 hours (lowest RAM usage)
-	# 12 threads: 
-	# 12 processor: (highest RAM usage)
+	# 12 threads: 9 hours
+	# 12 processor: 4 hours (highest RAM usage)
 
-	chunk_size = math.ceil(len(downloaded_graph_nodes) / args.num_thread)
+	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
+	chunk_size = math.ceil(len(downloaded_graph_nodes) / divisor)
 	graph_nodes_chunks = [
 		downloaded_graph_nodes[i:i + chunk_size]
 		for i in range(0, len(downloaded_graph_nodes), chunk_size)
@@ -333,9 +334,10 @@ def main():
 		(tokenizer, model, device, table, node_chunk)
 		for node_chunk in graph_nodes_chunks
 	]
+	print("Embedding downloaded graph categories to vectors:")
+
 	if args.num_proc > 1:
 		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
-			print("Embedding downloaded graph categories to vectors:")
 			results = pool.starmap(
 				embed_all_unseen_categories, args_list
 			)
@@ -344,7 +346,6 @@ def main():
 				vector_metadata += result
 	else:
 		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-			print("Embedding downloaded graph categories to vectors:")
 			results = executor.map(
 				lambda args: embed_all_unseen_categories(*args), 
 				args_list
@@ -394,7 +395,7 @@ def main():
 	if len(vector_metadata) != 0:
 		print(len(vector_metadata))
 		print("Adding missing embeddings to vector DB.")
-		# table.add(data=vector_metadata, mode="append")
+		table.add(data=vector_metadata, mode="append")
 
 
 	###################################################################

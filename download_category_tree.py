@@ -244,7 +244,7 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str =
 		
 		# Increment max depths by 5 up until the max depth.
 		offset = 5
-		for intermediate_max_depth in range(checkpoint_depth + offset, max_depth + 1, offset):
+		for intermediate_max_depth in range(min(checkpoint_depth + offset, max_depth), max_depth + 1, offset):
 			print(f"Building category tree up to level {intermediate_max_depth}")
 			
 			# Identify the leaf nodes in the category graph that are
@@ -268,16 +268,29 @@ def build_full_graph(max_depth: int = 1, use_bfs: bool = False, extension: str =
 			# subtree and add that subtree to the graph (update the
 			# graph).
 			for idx, item in enumerate(tqdm(categories)):
-				# Insert sleep for 4 hours to make sure that we don't
+				# Insert sleep for hours to make sure that we don't
 				# get HTTP errors (likely due to too many requests/rate
 				# limits).
-				if idx > 0 and idx % 100_000 == 0:
-					time.sleep(4 * 3600)
+				if idx > 0 and idx % 500_000 == 0:
+					# Logic here is that larger depth means more time
+					# between cycles.
+					# time.sleep(4.5 * 3600)
+					# time.sleep((depth / 2) * 3600)
+					time.sleep((depth / 4) * 3600)
+					# time.sleep(60)
 
 				category, depth = item
 				subcategories = get_all_subcategories_bfs(
-					category, intermediate_max_depth - depth
+					# category, intermediate_max_depth - depth
+					# category, depth - intermediate_max_depth
+					# category, intermediate_max_depth
+					category, max_depth
 				)
+
+				# TODO:
+				# Debug the get_all_subcategories bfs() function. This 
+				# may be the reason why depths larger than 10 are 
+				# returning just the depth 10 graph.
 
 				for cat, subcats in subcategories.items():
 					for subcat in subcats:
