@@ -399,6 +399,9 @@ def main():
 	# Single thread/processor: 12 hours (lowest RAM usage)
 	# 12 threads: 9 hours
 	# 12 processor: 4 hours (highest RAM usage)
+	# "Maximized" processors on server:
+	# 32 processors: 2.5 hours
+	# 48 processors: 2.5 hours
 
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
 	chunk_size = math.ceil(len(downloaded_graph_nodes) / divisor)
@@ -412,23 +415,24 @@ def main():
 	]
 	print("Embedding downloaded graph categories to vectors:")
 
-	if args.num_proc > 1:
-		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
-			results = pool.starmap(
-				embed_all_unseen_categories, args_list
-			)
+	if False:
+		if args.num_proc > 1:
+			with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
+				results = pool.starmap(
+					embed_all_unseen_categories, args_list
+				)
 
-			for result in results:
-				vector_metadata += result
-	else:
-		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-			results = executor.map(
-				lambda args: embed_all_unseen_categories(*args), 
-				args_list
-			)
-		
-			for result in results:
-				vector_metadata += result
+				for result in results:
+					vector_metadata += result
+		else:
+			with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+				results = executor.map(
+					lambda args: embed_all_unseen_categories(*args), 
+					args_list
+				)
+			
+				for result in results:
+					vector_metadata += result
 
 	# for node in tqdm(downloaded_graph_nodes):
 	# 	# Query the vector DB for the category.
@@ -478,6 +482,13 @@ def main():
 	###################################################################
 	new_vector_metadata = []
 
+	# NOTE:
+	# Seems to be CUDA OOM error when num_proc > 48 on server GPU (GPU 
+	# detected/no --use_cpu flag).
+	# "Maximized" processors on server:
+	# 32 processors: 
+	# 48 processors:  hours
+
 	# Load categories from dataset.
 	cat_to_doc_path = os.path.join(
 		config["preprocessing"]["category_cache_path"],
@@ -487,8 +498,12 @@ def main():
 	missing_categories = rsh.set_difference(
 		set(downloaded_graph_nodes), set(cat_to_docs.keys())
 	)
+	missing_categories = [
+		preprocess_category_text(category) 
+		for category in missing_categories
+	]
 
-	chunk_size = math.ceil(len(downloaded_graph_nodes) / divisor)
+	chunk_size = math.ceil(len(missing_categories) / divisor)
 	category_chunks = [
 		missing_categories[i:i + chunk_size]
 		for i in range(0, len(missing_categories), chunk_size)
@@ -506,7 +521,7 @@ def main():
 			)
 
 			for result in results:
-				vector_metadata += result
+				new_vector_metadata += result
 	else:
 		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
 			results = executor.map(
@@ -515,7 +530,7 @@ def main():
 			)
 		
 			for result in results:
-				vector_metadata += result
+				new_vector_metadata += result
 
 	# Add the metadata.
 	if len(new_vector_metadata) != 0:
