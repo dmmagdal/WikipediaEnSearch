@@ -217,14 +217,16 @@ def embed_text(tokenizer: AutoTokenizer, model: AutoModel, device: str, text: st
 		# send to CPU, isolate remaining vector)
 		embedding = output[0].mean(dim=1)
 		embedding = embedding.to("cpu")
-		embedding = embedding.numpy()[0]
+		# embedding = embedding.numpy()[0] # batch size 1
+		embedding = embedding.numpy() # batch size n
 
 	# Return embedding.
 	return embedding
 
 
-def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, device: str, table: lancedb.table, categories: List[str]) -> List[Dict[str, Any]]:
+def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, device: str, table: lancedb.table, categories: List[str], batch_size: int = 1) -> List[Dict[str, Any]]:
 	metadata = []
+	batch = []
 
 	for node in tqdm(categories):
 		# Query the vector DB for the category.
@@ -237,9 +239,21 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 		if len(results) != 0:
 			continue
 
+		batch.append(node)
+
 		# Embed the category and add it to the vector metadata.
-		embedding = embed_text(tokenizer, model, device, node)
-		metadata.append({"category": node, "vector": embedding})
+		# embedding = embed_text(tokenizer, model, device, node)
+		# metadata.append({"category": node, "vector": embedding})
+
+		if len(batch) == batch_size or categories.index(node) == len(categories) - 1:
+			# Embed the category and add it to the vector metadata.
+			embedding = embed_text(tokenizer, model, device, node)
+			for i in range(embedding.shape[0]):
+				print(embedding[i].shape)
+				metadata.append({"category": node, "vector": embedding[i]})
+
+			# Reset batch.
+			batch = []
 
 	return metadata
 
@@ -296,6 +310,12 @@ def main():
 		action="store_true",
 		help="Whether to force machine to use CPU instead of detected GPU. Default is false/not specified."
 	)
+	parser.add_argument(
+		"--batch_size",
+		type=int,
+		default=1,
+		help="Batch size for processing data to embedding model. Default is 1/not specified."
+	)
 
 	# Parse arguments.
 	args = parser.parse_args()
@@ -307,6 +327,7 @@ def main():
 	use_json = args.use_json
 	metadata_extension = "json" if use_json else "msgpack"
 	use_cpu = args.use_cpu
+	batch_size = args.batch_size
 
 	# Isolate downloaded graph and verify its path.
 	downloaded_graph_path = os.path.join(
@@ -410,7 +431,7 @@ def main():
 		for i in range(0, len(downloaded_graph_nodes), chunk_size)
 	]
 	args_list = [
-		(tokenizer, model, device, table, node_chunk)
+		(tokenizer, model, device, table, node_chunk, batch_size)
 		for node_chunk in graph_nodes_chunks
 	]
 	print("Embedding downloaded graph categories to vectors:")
@@ -509,7 +530,7 @@ def main():
 		for i in range(0, len(missing_categories), chunk_size)
 	]
 	args_list = [
-		(tokenizer, model, device, table, node_chunk)
+		(tokenizer, model, device, table, node_chunk, batch_size)
 		for node_chunk in category_chunks
 	]
 	print("Embedding remaining categories to vectors:")
