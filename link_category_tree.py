@@ -180,6 +180,15 @@ def preprocess_category_text(category: str) -> str:
 	@param: category (str), the category text string.
 	@return: returns the category text string (cleaned).
 	'''
+	# Remove any "Catagory:" from the beginning of the category string.
+	category_substring = "Category:"
+	if category.startswith(category_substring):
+		category = category[len(category_substring):]
+
+	# Remove period characters ("."). This may interfere with lanceDB
+	# SQL filtering.
+	# category = category.replace(".", " ")
+
 	# Remove quote characters (double """ and single '') from the 
 	# category string (this will interfere with the SQL commands to 
 	# query a category).
@@ -249,7 +258,6 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 			# Embed the category and add it to the vector metadata.
 			embedding = embed_text(tokenizer, model, device, node)
 			for i in range(embedding.shape[0]):
-				print(embedding[i].shape)
 				metadata.append({"category": node, "vector": embedding[i]})
 
 			# Reset batch.
@@ -423,6 +431,8 @@ def main():
 	# "Maximized" processors on server:
 	# 32 processors: 2.5 hours
 	# 48 processors: 2.5 hours
+	# (batch size > 1)batch size > 1:
+	# 16 processors: 10 minutes (batch size 128)
 
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
 	chunk_size = math.ceil(len(downloaded_graph_nodes) / divisor)
@@ -436,24 +446,23 @@ def main():
 	]
 	print("Embedding downloaded graph categories to vectors:")
 
-	if False:
-		if args.num_proc > 1:
-			with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
-				results = pool.starmap(
-					embed_all_unseen_categories, args_list
-				)
+	if args.num_proc > 1:
+		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
+			results = pool.starmap(
+				embed_all_unseen_categories, args_list
+			)
 
-				for result in results:
-					vector_metadata += result
-		else:
-			with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-				results = executor.map(
-					lambda args: embed_all_unseen_categories(*args), 
-					args_list
-				)
-			
-				for result in results:
-					vector_metadata += result
+			for result in results:
+				vector_metadata += result
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			results = executor.map(
+				lambda args: embed_all_unseen_categories(*args), 
+				args_list
+			)
+		
+			for result in results:
+				vector_metadata += result
 
 	# for node in tqdm(downloaded_graph_nodes):
 	# 	# Query the vector DB for the category.
@@ -494,8 +503,7 @@ def main():
 
 	# Add the metadata.
 	if len(vector_metadata) != 0:
-		print(len(vector_metadata))
-		print("Adding missing embeddings to vector DB.")
+		print(f"Adding {len(vector_metadata)} missing embeddings to vector DB.")
 		table.add(data=vector_metadata, mode="append")
 
 	###################################################################
@@ -507,8 +515,11 @@ def main():
 	# Seems to be CUDA OOM error when num_proc > 48 on server GPU (GPU 
 	# detected/no --use_cpu flag).
 	# "Maximized" processors on server:
-	# 32 processors: 
-	# 48 processors:  hours
+	# 8 processors: (batch size 32)
+	# 16 processors: 2.5 hours (batch size 64)
+	# 16 processors:  minutes (batch size 128)
+	# 32 processors: (batch size 1)
+	# 48 processors: ~13 hours (batch size 1)
 
 	# Load categories from dataset.
 	cat_to_doc_path = os.path.join(
@@ -555,13 +566,43 @@ def main():
 
 	# Add the metadata.
 	if len(new_vector_metadata) != 0:
-		print(len(new_vector_metadata))
-		print("Adding remaining missing embeddings to vector DB.")
+		print(f"Adding {len(new_vector_metadata)} remaining missing embeddings to vector DB.")
 		table.add(data=new_vector_metadata, mode="append")
 
 	###################################################################
 	# UPDATE GRAPH WITH MOST SIMILAR CATEGORIES AS CHILDREN
 	###################################################################
+	nodes_for_query = ", ".join(
+		f"'{category}'" for category in downloaded_graph_nodes
+	)
+	print(nodes_for_query[:100])
+	print(downloaded_graph_nodes[:5])
+	print(list(cat_to_docs.keys())[:5])
+	exit(0)
+	for node in tqdm(missing_categories):
+		# Get current category node embedding.
+		_, embedding = table.search()\
+			.where(f"category = '{node}'")\
+			.limit(1)\
+			.to_list()
+
+		# Search for "closest" node embedding from the graph.
+		best_category, _ = table.search(embedding)\
+			.where(f"category IN ({nodes_for_query})")\
+			.limit(1)\
+			.to_list()
+
+		# Create an edge in the downloaded graph connecting the "best
+		# matching" category (from the original downloaded graph) to
+		# the current category node from the "missing" categories list.
+		downloaded_graph.add_edge(best_category, node)
+
+	# Save the updated category tree graph.
+	output_graph_path = os.path.join(
+		"./wiki_category_graphs",
+		f"wiki_categories_depth{depth}_full.{extension}"
+	)
+	save_graph(downloaded_graph, output_graph_path, extension)
 
 	# Exit the program.
 	exit(0)
