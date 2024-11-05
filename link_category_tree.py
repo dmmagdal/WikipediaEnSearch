@@ -256,9 +256,9 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 
 		if len(batch) == batch_size or categories.index(node) == len(categories) - 1:
 			# Embed the category and add it to the vector metadata.
-			embedding = embed_text(tokenizer, model, device, node)
-			for i in range(embedding.shape[0]):
-				metadata.append({"category": node, "vector": embedding[i]})
+			embedding = embed_text(tokenizer, model, device, batch)
+			for i, category in enumerate(batch):
+				metadata.append({"category": category, "vector": embedding[i]})
 
 			# Reset batch.
 			batch = []
@@ -373,6 +373,9 @@ def main():
 	if not use_cpu:
 		if torch.cuda.is_available():
 			device = "cuda"
+
+			# Clear cache from GPU.
+			torch.cuda.empty_cache()
 		elif torch.backends.mps.is_available():
 			device = "mps"
 
@@ -433,6 +436,30 @@ def main():
 	# 48 processors: 2.5 hours
 	# (batch size > 1)batch size > 1:
 	# 16 processors: 10 minutes (batch size 128)
+	# 16 processors:  (batch size 32)
+	# 8 processors @ batch size 16: 
+	# - 8.5 hours for all embeddings
+	# -  hours with no new embeddings
+	# - 8.3 GB VRAM for all embeddings
+	# -  GB VRAM with no new embeddings
+	# -  GB RAM
+	# - GPU status: pass
+	# 8 processors @ batch size 32: 
+	# -  hours for all embeddings
+	# -  hours with no new embeddings
+	# - 11.7 GB VRAM for all embeddings
+	# -  GB VRAM with no new embeddings
+	# -  GB RAM
+	# - GPU status: pass
+	# 16 processors @ batch size 16: 
+	# - 8 hours for all embeddings
+	# - 2.5 hours with no new embeddings
+	# - 14.2 GB VRAM for all embeddings
+	# - 5 GB VRAM with no new embeddings
+	# - 18 GB RAM
+	# - GPU status: pass
+	# Anything bigger results in CUDA OOM on a single 16GB VRAM GPU on 
+	# \server.
 
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
 	chunk_size = math.ceil(len(downloaded_graph_nodes) / divisor)
@@ -520,6 +547,29 @@ def main():
 	# 16 processors:  minutes (batch size 128)
 	# 32 processors: (batch size 1)
 	# 48 processors: ~13 hours (batch size 1)
+	# 8 processors @ batch size 16: 
+	# -  hours for all embeddings
+	# -  hours with no new embeddings
+	# -  GB VRAM for all embeddings
+	# -  GB VRAM with no new embeddings
+	# -  GB RAM
+	# - GPU status: pass
+	# 8 processors @ batch size 32: 
+	# -  hours for all embeddings
+	# -  hours with no new embeddings
+	# -  GB VRAM for all embeddings
+	# -  GB VRAM with no new embeddings
+	# -  GB RAM
+	# - GPU status: pass
+	# 16 processors @ batch size 16: 
+	# -  hours for all embeddings
+	# -  hours with no new embeddings
+	# -  GB VRAM for all embeddings
+	# -  GB VRAM with no new embeddings
+	# -  GB RAM
+	# - GPU status: pass
+	# Anything bigger results in CUDA OOM on a single 16GB VRAM GPU on 
+	# \server.
 
 	# Load categories from dataset.
 	cat_to_doc_path = os.path.join(
