@@ -9,6 +9,7 @@ msgpack==1.0.0
 networkx==3.3
 nltk==3.8
 num2words==0.5.12
+pyarrow==15.0.0
 requests==2.31.0
 transformers==4.45.0
 torch==2.1.0

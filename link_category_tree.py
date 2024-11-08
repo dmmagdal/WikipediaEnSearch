@@ -218,6 +218,7 @@ def embed_text(tokenizer: AutoTokenizer, model: AutoModel, device: str, text: st
 				text,
 				add_special_tokens=False,
 				padding="max_length",
+				truncation=True,
 				return_tensors="pt"
 			).to(device)
 		)
@@ -235,7 +236,11 @@ def embed_text(tokenizer: AutoTokenizer, model: AutoModel, device: str, text: st
 
 def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, device: str, table: lancedb.table, categories: List[str], batch_size: int = 1) -> List[Dict[str, Any]]:
 	metadata = []
+	# counter = 0
 	batch = []
+	# local_data = []
+	# local_limit = 1000
+	# local_counter = 0
 
 	for node in tqdm(categories):
 		# Query the vector DB for the category.
@@ -255,15 +260,45 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 		# metadata.append({"category": node, "vector": embedding})
 
 		if len(batch) == batch_size or categories.index(node) == len(categories) - 1:
+
 			# Embed the category and add it to the vector metadata.
 			embedding = embed_text(tokenizer, model, device, batch)
 			for i, category in enumerate(batch):
+				# TODO:
+				# Debug nan embeddings -> Do this after running for all 
+				# embeddings so that you dont have to recompute them.
+
+				# Skip nan embeddings for now.
+				# if np.any(np.isnan(embedding[i])):
+				# 	print(
+		   		# 		json.dumps(
+				# 			{"category": category, "vector": embedding[i]},
+				# 			indent=4
+				# 		)
+				# 	)
+				# 	continue
+
 				metadata.append({"category": category, "vector": embedding[i]})
+				# local_data.append({"category": category, "vector": embedding[i]})
+
+			# counter += len(batch)
 
 			# Reset batch.
 			batch = []
 
+	# TODO: remove after full run 
+	# 		local_counter += 1
+
+	# 	if local_counter > 0 and local_counter % local_limit == 0:
+	# 		table.add(data=local_data, mode="append") 
+	# 		local_data = []
+
+	# if len(local_data) != 0:
+	# 	table.add(data=local_data, mode="append")
+	# TODO: End of removal block
+
 	return metadata
+	# return counter
 
 
 def main():
@@ -424,7 +459,8 @@ def main():
 	###################################################################
 	# COMPUTE DOWNLOAD GRAPH EMBEDDINGS
 	###################################################################
-	vector_metadata = []
+	# vector_metadata = []
+	vector_metadata = 0
 
 	# NOTE:
 	# Runtime on server
@@ -434,6 +470,8 @@ def main():
 	# "Maximized" processors on server:
 	# 32 processors: 2.5 hours
 	# 48 processors: 2.5 hours
+
+	# NOTE:
 	# (batch size > 1)batch size > 1:
 	# 16 processors: 10 minutes (batch size 128)
 	# 16 processors:  (batch size 32)
@@ -459,7 +497,8 @@ def main():
 	# - 18 GB RAM
 	# - GPU status: pass
 	# Anything bigger results in CUDA OOM on a single 16GB VRAM GPU on 
-	# \server.
+	# server. So no more than 256 items on the GPU at any time (for 
+	# depth 10 graph).
 
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
 	chunk_size = math.ceil(len(downloaded_graph_nodes) / divisor)
@@ -473,23 +512,24 @@ def main():
 	]
 	print("Embedding downloaded graph categories to vectors:")
 
-	if args.num_proc > 1:
-		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
-			results = pool.starmap(
-				embed_all_unseen_categories, args_list
-			)
+	if False:
+		if args.num_proc > 1:
+			with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
+				results = pool.starmap(
+					embed_all_unseen_categories, args_list
+				)
 
-			for result in results:
-				vector_metadata += result
-	else:
-		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-			results = executor.map(
-				lambda args: embed_all_unseen_categories(*args), 
-				args_list
-			)
-		
-			for result in results:
-				vector_metadata += result
+				for result in results:
+					vector_metadata += result
+		else:
+			with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+				results = executor.map(
+					lambda args: embed_all_unseen_categories(*args), 
+					args_list
+				)
+			
+				for result in results:
+					vector_metadata += result
 
 	# for node in tqdm(downloaded_graph_nodes):
 	# 	# Query the vector DB for the category.
@@ -529,14 +569,17 @@ def main():
 	# 		)
 
 	# Add the metadata.
-	if len(vector_metadata) != 0:
-		print(f"Adding {len(vector_metadata)} missing embeddings to vector DB.")
-		table.add(data=vector_metadata, mode="append")
+	# if len(vector_metadata) != 0:
+	# 	print(f"Adding {len(vector_metadata)} missing embeddings to vector DB.")
+	# 	table.add(data=vector_metadata, mode="append")
+	if vector_metadata != 0:
+		print(f"Added {vector_metadata} missing embeddings to vector DB.")
 
 	###################################################################
 	# COMPUTE REMAINING CATEGORY EMBEDDINGS
 	###################################################################
 	new_vector_metadata = []
+	# new_vector_metadata = 0
 
 	# NOTE:
 	# Seems to be CUDA OOM error when num_proc > 48 on server GPU (GPU 
@@ -562,14 +605,15 @@ def main():
 	# -  GB RAM
 	# - GPU status: pass
 	# 16 processors @ batch size 16: 
-	# -  hours for all embeddings
+	# - 12.5 hours for all embeddings
 	# -  hours with no new embeddings
-	# -  GB VRAM for all embeddings
+	# - 14.6 GB VRAM for all embeddings
 	# -  GB VRAM with no new embeddings
-	# -  GB RAM
+	# - 37.4 GB RAM
 	# - GPU status: pass
 	# Anything bigger results in CUDA OOM on a single 16GB VRAM GPU on 
-	# \server.
+	# server. So no more than 256 items on the GPU at any time (for 
+	# depth 10 graph).
 
 	# Load categories from dataset.
 	cat_to_doc_path = os.path.join(
@@ -617,13 +661,15 @@ def main():
 	# Add the metadata.
 	if len(new_vector_metadata) != 0:
 		print(f"Adding {len(new_vector_metadata)} remaining missing embeddings to vector DB.")
-		table.add(data=new_vector_metadata, mode="append")
+		table.add(data=new_vector_metadata, mode="append", on_bad_vectors="drop")
+	# if new_vector_metadata != 0:
+	# 	print(f"Added {new_vector_metadata} remaining missing embeddings to vector DB.")
 
 	###################################################################
 	# UPDATE GRAPH WITH MOST SIMILAR CATEGORIES AS CHILDREN
 	###################################################################
 	nodes_for_query = ", ".join(
-		f"'{category}'" for category in downloaded_graph_nodes
+		f"'{category}'" for category in tqdm(downloaded_graph_nodes)
 	)
 	print(nodes_for_query[:100])
 	print(downloaded_graph_nodes[:5])
