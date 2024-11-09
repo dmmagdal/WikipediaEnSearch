@@ -517,6 +517,8 @@ def main():
 		elif torch.backends.mps.is_available():
 			device = "mps"
 
+	print(f"Running on device {device}")
+
 	# NOTE:
 	# Multiprocessing doesn't seem to play well with MPS device. If
 	# using multiprocessing on Apple Silicon device, use the --use_cpu
