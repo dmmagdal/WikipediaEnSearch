@@ -256,12 +256,55 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 	@return: returns a List[Dict[str, Any]] containing the unique 
 		(unseen) category, embedding pairs.
 	'''
+	# Lists for tracking batches and returned category, embedding 
+	# pairs.
 	metadata = []
-	# counter = 0
 	batch = []
-	# local_data = []
-	# local_limit = 1000
-	# local_counter = 0
+
+	# NOTE:
+	# pyarrow has a limit of 2GB for every object it is storing. Each
+	# entry is comprised of a category, embedding pair. The expected
+	# storage of each is computed below.
+	# - Category
+	#   utf-8 (4 bytes) x 512 characters = 2 kb
+	# - Embedding
+	#   float32 (4 byte) x 1024 floats = 4 kb
+	# The 512 characters comes from the max context length of models
+	# currently catalogued in config.json at the time of this writing.
+	# the 1024 floats come from the max embedding dimensions of models
+	# also catalogued in config.json.
+	# This means each entry is 6 kb large. Some additional math down
+	# below will show this data will scale up in different chunks.
+	# - 1,000 -> 6 mb
+	# - 100,000 -> 600 mb
+	# - 250,000 -> 1.5 gb
+	# - 500,000 -> 3 gb (out of range)
+	# - 1,000,000 -> 6 gb (out of range)
+	# It stands to reason that the chunk size before saving should be 
+	# at the 250,000 or 100,000 marks.
+
+	# Variables to tracking number of batches and aggregated batch 
+	# data.
+	local_data = []
+	local_limit = int(100_000 / batch_size)
+	local_counter = 0
+	append_to_chunk = len(categories) > local_limit
+
+	# NOTE:
+	# Originally, this function was going to store all the category, 
+	# embedding pairs to a list and return that list, at which point it
+	# would be merged with other output lists from any other 
+	# processes/threads. However, there seems to be an issue with the
+	# size of the array passed over to pyarrow when inserting into the 
+	# table (pyarrow apparently has a limit of objects with 2GB, much 
+	# less than the memory size of the lists being passed in). To 
+	# handle this, rather than return the whole list, store only a
+	# chunk at a time and write to the table directly here. This will
+	# reduce both memory overhead AND limit the size of the object 
+	# passed to pyarrow. Letting the process get interrupted will incur
+	# a steep penalty in terms of time because of the removal of 
+	# categories already stored in the table (it is recommended to do 
+	# this all in one successful pass).
 
 	for node in tqdm(categories):
 		if check_for_duplicates:
@@ -275,20 +318,25 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 			if len(results) != 0:
 				continue
 
+		# Append the (valid) node to the batch.
 		batch.append(node)
 
 		# Embed the category and add it to the vector metadata.
 		# embedding = embed_text(tokenizer, model, device, node)
 		# metadata.append({"category": node, "vector": embedding})
 
+		# Once the batch has reached the specified batch size (or the 
+		# current nodes is the end of the list), begin the batch 
+		# embedding process to generate the category, embedding pairs.
 		if len(batch) == batch_size or categories.index(node) == len(categories) - 1:
-
 			# Embed the category and add it to the vector metadata.
 			embedding = embed_text(tokenizer, model, device, batch)
 			for i, category in enumerate(batch):
-				# TODO:
-				# Debug nan embeddings -> Do this after running for all 
-				# embeddings so that you dont have to recompute them.
+				# NOTE:
+				# A blank string or string with whitespace will result 
+				# in vector embeddings with NaN values. This will throw
+				# an error. The following statement will check for NaN
+				# values in the embeddings and skip those strings.
 
 				# Skip nan embeddings for now.
 				if np.any(np.isnan(embedding[i])):
@@ -296,27 +344,36 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 					print(f"Len of category string: {len(category)}")
 					continue
 
-				metadata.append({"category": category, "vector": embedding[i]})
-				# local_data.append({"category": category, "vector": embedding[i]})
-
-			# counter += len(batch)
+				# Append to one list depending on the number of 
+				# categories passed into the function.
+				if append_to_chunk:
+					local_data.append(
+						{"category": category, "vector": embedding[i]}
+					)
+				else:
+					metadata.append(
+						{"category": category, "vector": embedding[i]}
+					)
 
 			# Reset batch.
 			batch = []
 
-	# TODO: remove after full run 
-	# 		local_counter += 1
+			# Increment local counter for number batches.
+			local_counter += 1
 
-	# 	if local_counter > 0 and local_counter % local_limit == 0:
-	# 		table.add(data=local_data, mode="append") 
-	# 		local_data = []
+		# Insert local data into the table once the local counter for
+		# number of batches has reached the set threshold.
+		if local_counter > 0 and local_counter % local_limit == 0 and append_to_chunk:
+			table.add(data=local_data, mode="append") 
+			local_data = []
 
-	# if len(local_data) != 0:
-	# 	table.add(data=local_data, mode="append")
-	# TODO: End of removal block
+	# Insert any remaining local data into the table.
+	if len(local_data) != 0 and append_to_chunk:
+		table.add(data=local_data, mode="append")
 
+	# Return the list of all category, embedding pairs computed (if the
+	# number of categories embedded did not exceed the set threshold).
 	return metadata
-	# return counter
 
 
 def search_table_for_categories(table: lancedb.table, categories: List[str]) -> List[str]:
@@ -674,13 +731,13 @@ def main():
 				vector_metadata += result
 	
 	# Add the metadata.
-	if len(vector_metadata) != 0:
-		print(f"Adding {len(vector_metadata)} missing embeddings to vector DB.")
-		table.add(
-			data=vector_metadata, 
-			mode="append", 
-			on_bad_vectors="drop"
-		)
+	# if len(vector_metadata) != 0:
+	# 	print(f"Adding {len(vector_metadata)} missing embeddings to vector DB.")
+	# 	table.add(
+	# 		data=vector_metadata, 
+	# 		mode="append", 
+	# 		on_bad_vectors="drop"
+	# 	)
 
 	exit()
 
