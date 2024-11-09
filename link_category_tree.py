@@ -7,6 +7,7 @@
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import copy
 import json
 import math
 import multiprocessing as mp
@@ -234,7 +235,27 @@ def embed_text(tokenizer: AutoTokenizer, model: AutoModel, device: str, text: st
 	return embedding
 
 
-def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, device: str, table: lancedb.table, categories: List[str], batch_size: int = 1) -> List[Dict[str, Any]]:
+def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, device: str, table: lancedb.table, categories: List[str], batch_size: int = 1, check_for_duplicates: bool = True) -> List[Dict[str, Any]]:
+	'''
+	Iterate through the list of categories and embed all (unseen) 
+		categories so they can be stored in the vector DB table.
+	@param: tokenizer (AutoTokenizer), pretrained tokenizer for the 
+		model.
+	@param: model (AutoModel), pretrained transformers model that 
+		generates the embeddings.
+	@param: device (str), what device to send the tokenizer and model 
+		to.
+	@param: table (lacedeb.table), the vector DB table that is being 
+		queried.
+	@param: categories (List[str]), the list of categories to check
+		against the entries in the vector DB table.
+	@param: batch_size (int), the size of the batches of text that will 
+		be passed into the embedding model. Default is 1
+	@param: check_for_duplicate (bool), whether to check for categories'
+		that already exist within the embedding. Default is True.
+	@return: returns a List[Dict[str, Any]] containing the unique 
+		(unseen) category, embedding pairs.
+	'''
 	metadata = []
 	# counter = 0
 	batch = []
@@ -243,15 +264,16 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 	# local_counter = 0
 
 	for node in tqdm(categories):
-		# Query the vector DB for the category.
-		results = table.search()\
-			.where(f"category = '{node}'")\
-			.limit(1)\
-			.to_list()
+		if check_for_duplicates:
+			# Query the vector DB for the category.
+			results = table.search()\
+				.where(f"category = '{node}'")\
+				.limit(1)\
+				.to_list()
 
-		# If the category does exist already, skip the entry.
-		if len(results) != 0:
-			continue
+			# If the category does exist already, skip the entry.
+			if len(results) != 0:
+				continue
 
 		batch.append(node)
 
@@ -269,14 +291,10 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 				# embeddings so that you dont have to recompute them.
 
 				# Skip nan embeddings for now.
-				# if np.any(np.isnan(embedding[i])):
-				# 	print(
-		   		# 		json.dumps(
-				# 			{"category": category, "vector": embedding[i]},
-				# 			indent=4
-				# 		)
-				# 	)
-				# 	continue
+				if np.any(np.isnan(embedding[i])):
+					print(f"Catgory: {category}\nEmbedding: {embedding[i]}")
+					print(f"Len of category string: {len(category)}")
+					continue
 
 				metadata.append({"category": category, "vector": embedding[i]})
 				# local_data.append({"category": category, "vector": embedding[i]})
@@ -299,6 +317,34 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 
 	return metadata
 	# return counter
+
+
+def search_table_for_categories(table: lancedb.table, categories: List[str]) -> List[str]:
+	'''
+	Search the categories in the vector DB table and isolate which 
+		categories in the arguments list are already found in the 
+		table.
+	@param: table (lacedeb.table), the vector DB table that is being 
+		queried.
+	@param: categories (List[str]), the list of categories to check
+		against the entries in the vector DB table.
+	@return: returns a List[str] containing all categories that were
+		found in the vector DB table.
+	'''
+	metadata = []
+
+	for node in tqdm(categories):
+		# Query the vector DB for the category.
+		results = table.search()\
+			.where(f"category = '{node}'")\
+			.limit(1)\
+			.to_list()
+
+		# If the category does exist already, skip the entry.
+		if len(results) != 0:
+			metadata.append(node)
+	
+	return metadata
 
 
 def main():
@@ -455,12 +501,74 @@ def main():
 		table = db.create_table(table_name, schema=schema)
 	else:
 		table = db.open_table(table_name)
+
+	# Load categories from dataset.
+	cat_to_doc_path = os.path.join(
+		config["preprocessing"]["category_cache_path"],
+		f"cat_to_doc.{metadata_extension}"
+	)
+	cat_to_docs = load_data_file(cat_to_doc_path, use_json)
+	missing_categories = rsh.set_difference(
+		set(downloaded_graph_nodes), set(cat_to_docs.keys())
+	)
+	missing_categories = [
+		preprocess_category_text(category) 
+		for category in missing_categories
+		if len(preprocess_category_text(category).strip()) != 0
+	]
+	all_categories = set(downloaded_graph_nodes + missing_categories)
+	all_categories_list = list(copy.deepcopy(all_categories))
+
+	# Filter out all categories that are already found in the table.
+	print("Isolating categories already stored in table")
+	found_categories = []
+
+	# Resource Usage
+	# ------------------------------
+	# 1 processor @ batch size 256:
+	# - 2.5 to 3 hours
+	# - GB RAM
+	# 16 processors @ batch size 16:
+	# - 10 minutes
+	# - 23 GB RAM
+
+	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
+	chunk_size = math.ceil(len(all_categories) / divisor)
+	category_node_chunks = [
+		all_categories_list[i:i + chunk_size]
+		for i in range(0, len(all_categories), chunk_size)
+	]
+	args_list = [
+		(table, node_chunk) for node_chunk in category_node_chunks
+	]
+	
+	if args.num_proc > 1:
+		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
+			results = pool.starmap(
+				search_table_for_categories, args_list
+			)
+
+			for result in results:
+				found_categories += result
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			results = executor.map(
+				lambda args: search_table_for_categories(*args), 
+				args_list
+			)
+		
+			for result in results:
+				found_categories += result
+
+	del all_categories_list
+	all_categories.difference_update(found_categories)
+	all_categories = list(all_categories)
 	
 	###################################################################
 	# COMPUTE DOWNLOAD GRAPH EMBEDDINGS
 	###################################################################
-	# vector_metadata = []
-	vector_metadata = 0
+	vector_metadata = []
+	# vector_metadata = 0
 
 	# NOTE:
 	# Runtime on server
@@ -501,35 +609,101 @@ def main():
 	# depth 10 graph).
 
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
-	chunk_size = math.ceil(len(downloaded_graph_nodes) / divisor)
-	graph_nodes_chunks = [
-		downloaded_graph_nodes[i:i + chunk_size]
-		for i in range(0, len(downloaded_graph_nodes), chunk_size)
+	check_for_category = False
+	chunk_size = math.ceil(len(all_categories) / divisor)
+	category_node_chunks = [
+		all_categories[i:i + chunk_size]
+		for i in range(0, len(all_categories), chunk_size)
 	]
 	args_list = [
-		(tokenizer, model, device, table, node_chunk, batch_size)
-		for node_chunk in graph_nodes_chunks
+		(
+			tokenizer, model, device, table, node_chunk, batch_size, 
+			check_for_category
+		)
+		for node_chunk in category_node_chunks
 	]
+	print("Embedding graph categories to vectors:")
+
+	# NOTE:
+	# On server, fewer processors/threads means longer runtime but 
+	# lower RAM/VRAM usage. Larger batch size scales RAM/VRAM usage
+	# with the data but is also much faster.
+	# - Low processors/threads, low batch size -> slowest but least
+	# memory overhead
+	# - High processors/threads, high batch size -> fastest but higher
+	# memory overhead
+
+	# Resource Usage
+	# ------------------------------
+	# 1 processor @ batch size 256:
+	# - for all new embeddings
+	#    -  hours
+	#    - 9.6 GB VRAM
+	# - for no new embeddings
+	#    - hours
+	# - GB RAM
+	# 16 processors @ batch size 16:
+	# - for all new embeddings
+	#    - 22 hours
+	#    - 14.6 GB VRAM
+	# - for no new embeddings
+	#    - hours
+	#    - GB VRAM
+	# - 38.7 GB RAM
+	# NOTE:
+	# Anything bigger results in CUDA OOM on a single 16GB VRAM GPU on 
+	# server. So no more than 256 items on the GPU at any time (for 
+	# depth 10 graph).
+
+	if args.num_proc > 1:
+		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
+			results = pool.starmap(
+				embed_all_unseen_categories, args_list
+			)
+
+			for result in results:
+				vector_metadata += result
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			results = executor.map(
+				lambda args: embed_all_unseen_categories(*args), 
+				args_list
+			)
+		
+			for result in results:
+				vector_metadata += result
+	
+	# Add the metadata.
+	if len(vector_metadata) != 0:
+		print(f"Adding {len(vector_metadata)} missing embeddings to vector DB.")
+		table.add(
+			data=vector_metadata, 
+			mode="append", 
+			on_bad_vectors="drop"
+		)
+
+	exit()
+
+
 	print("Embedding downloaded graph categories to vectors:")
 
-	if False:
-		if args.num_proc > 1:
-			with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
-				results = pool.starmap(
-					embed_all_unseen_categories, args_list
-				)
+	if args.num_proc > 1:
+		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
+			results = pool.starmap(
+				embed_all_unseen_categories, args_list
+			)
 
-				for result in results:
-					vector_metadata += result
-		else:
-			with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-				results = executor.map(
-					lambda args: embed_all_unseen_categories(*args), 
-					args_list
-				)
-			
-				for result in results:
-					vector_metadata += result
+			for result in results:
+				vector_metadata += result
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			results = executor.map(
+				lambda args: embed_all_unseen_categories(*args), 
+				args_list
+			)
+		
+			for result in results:
+				vector_metadata += result
 
 	# for node in tqdm(downloaded_graph_nodes):
 	# 	# Query the vector DB for the category.
@@ -615,19 +789,6 @@ def main():
 	# server. So no more than 256 items on the GPU at any time (for 
 	# depth 10 graph).
 
-	# Load categories from dataset.
-	cat_to_doc_path = os.path.join(
-		config["preprocessing"]["category_cache_path"],
-		f"cat_to_doc.{metadata_extension}"
-	)
-	cat_to_docs = load_data_file(cat_to_doc_path, use_json)
-	missing_categories = rsh.set_difference(
-		set(downloaded_graph_nodes), set(cat_to_docs.keys())
-	)
-	missing_categories = [
-		preprocess_category_text(category) 
-		for category in missing_categories
-	]
 
 	chunk_size = math.ceil(len(missing_categories) / divisor)
 	category_chunks = [
