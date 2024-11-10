@@ -8,6 +8,7 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 import copy
+from datetime import timedelta
 import json
 import math
 import multiprocessing as mp
@@ -531,7 +532,7 @@ def main():
 	# INTIALIZE VECTOR DB AND STORE DOWNLOAD GRAPH EMBEDDINGS
 	###################################################################
 	uri = "./data/lance_db"
-	db = lancedb.connect(uri)
+	db = lancedb.connect(uri, read_consistency_interval=timedelta(0))
 
 	# Get list of tables.
 	table_names = db.table_names()
