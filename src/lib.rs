@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::iter::Filter;
 use indicatif::ProgressBar;
-use lancedb::*;
 
 
 fn filter_category_map_documents(
@@ -613,28 +612,6 @@ fn set_difference(a: HashSet<String>, b: HashSet<String>) -> Vec<String> {//Py<P
     //     b.difference(&a).cloned().collect().to_object(py)
     // });
     b.difference(&a).cloned().collect()
-}
-
-#[pyfunction]
-fn search_table_categories(connection_name: String, table_name: String, categories: <VecString>) -> Vec<String> {
-    let metadata: Vec<String>;
-    let pb = ProgressBar::new(categories.len());
-
-    let db = connect(&connection_name).execute().await.unwrap();
-    let table = db.open_table(&table_name).execute().await.unwrap();
-
-    for category in categories {
-        let filter = Filter::new("category", category);
-        let filtered_rows: Vec<Row> = table.filtered_rows(filter)?;
-
-        if filtered_rows.len() > 0 {
-            metadata.push(filtered_rows[0]["category"]);
-        }
-
-        pb.inc(1);
-    }
-
-    return metadata;
 }
 
 
