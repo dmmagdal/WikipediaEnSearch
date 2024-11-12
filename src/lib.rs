@@ -1,7 +1,6 @@
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::iter::Filter;
 use indicatif::ProgressBar;
 
 
