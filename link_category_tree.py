@@ -237,7 +237,15 @@ def embed_text(tokenizer: AutoTokenizer, model: AutoModel, device: str, text: st
 	return embedding
 
 
-def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, device: str, table: lancedb.table, categories: List[str], batch_size: int = 1, check_for_duplicates: bool = True) -> List[Dict[str, Any]]:
+def embed_all_unseen_categories(
+	tokenizer: AutoTokenizer, 
+	model: AutoModel, 
+	device: str, 
+	table: lancedb.table, 
+	categories: List[str], 
+	batch_size: int = 1, 
+	check_for_duplicates: bool = True
+) -> List[Dict[str, Any]]:
 	'''
 	Iterate through the list of categories and embed all (unseen) 
 		categories so they can be stored in the vector DB table.
@@ -290,7 +298,8 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 	local_data = []
 	local_limit = int(100_000 / batch_size)
 	local_counter = 0
-	append_to_chunk = len(categories) > local_limit
+	# append_to_chunk = len(categories) > local_limit
+	append_to_chunk = False
 
 	# NOTE:
 	# Originally, this function was going to store all the category, 
@@ -365,13 +374,13 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 
 		# Insert local data into the table once the local counter for
 		# number of batches has reached the set threshold.
-		if local_counter > 0 and local_counter % local_limit == 0 and append_to_chunk and len(local_data) > 0:
-			table.add(data=local_data, mode="append") 
-			local_data = []
+		# if local_counter > 0 and local_counter % local_limit == 0 and append_to_chunk and len(local_data) > 0:
+		# 	table.add(data=local_data, mode="append") 
+		# 	local_data = []
 
 	# Insert any remaining local data into the table.
-	if len(local_data) > 0 and append_to_chunk:
-		table.add(data=local_data, mode="append")
+	# if len(local_data) > 0 and append_to_chunk:
+	# 	table.add(data=local_data, mode="append")
 
 	# Return the list of all category, embedding pairs computed (if the
 	# number of categories embedded did not exceed the set threshold).
@@ -549,7 +558,7 @@ def main():
 	device = "cpu"
 	if not use_cpu:
 		if torch.cuda.is_available():
-			device = "cuda"
+			device = "cuda:1"
 
 			# Clear cache from GPU.
 			torch.cuda.empty_cache()
@@ -567,9 +576,9 @@ def main():
 	tokenizer, model = load_model(config, device=device)
 
 	###################################################################
-	# INTIALIZE VECTOR DB AND STORE DOWNLOAD GRAPH EMBEDDINGS
+	# INTIALIZE VECTOR DB AND SEARCH FOR EXISTING EMBEDDINGS
 	###################################################################
-	uri = "./data/lance_db"
+	uri = "./data-parallel-11_14_2024/lance_db"
 	db = lancedb.connect(uri, read_consistency_interval=timedelta(0))
 
 	# Get list of tables.
@@ -685,10 +694,9 @@ def main():
 	# exit()
 	
 	###################################################################
-	# COMPUTE DOWNLOAD GRAPH EMBEDDINGS
+	# COMPUTE AND STORE REMAINING EMBEDDINGS
 	###################################################################
 	vector_metadata = []
-	# vector_metadata = 0
 
 	# NOTE:
 	# Runtime on server
@@ -731,18 +739,56 @@ def main():
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
 	check_for_category = False
 	chunk_size = math.ceil(len(all_categories) / divisor)
+	write_chunk_size = 100_000
 	category_node_chunks = [
-		all_categories[i:i + chunk_size]
-		for i in range(0, len(all_categories), chunk_size)
+		# all_categories[i:i + chunk_size]
+		# for i in range(0, len(all_categories), chunk_size)
+		all_categories[i:i + write_chunk_size]
+		for i in range(0, len(all_categories), write_chunk_size)
 	]
 	args_list = [
 		(
+			# tokenizer, model, device, table, node_chunk, batch_size, 
+			# check_for_category
 			tokenizer, model, device, table, node_chunk, batch_size, 
 			check_for_category
 		)
 		for node_chunk in category_node_chunks
 	]
 	print("Embedding graph categories to vectors:")
+	if args.num_proc > 1:
+		num_cpus = min(mp.cpu_count(), args.num_proc)
+		with mp.Pool(num_cpus) as pool:
+			for i in range(0, len(args_list), num_cpus):
+				print(f"processing chunks {i + 1} to {i + num_cpus}")
+				results = pool.starmap(
+					embed_all_unseen_categories, args_list[i:i + num_cpus]
+				)
+
+				for result in results:
+					# vector_metadata += result
+					table.add(
+						data=result, 
+						mode="append", 
+						on_bad_vectors="drop"
+					)
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			results = executor.map(
+				lambda args: embed_all_unseen_categories(*args), 
+				args_list
+			)
+		
+			for result in results:
+				# vector_metadata += result
+				table.add(
+					data=result, 
+					mode="append", 
+					on_bad_vectors="drop"
+				)
+
+	
+	exit()
 
 	# NOTE:
 	# On server, fewer processors/threads means longer runtime but 
@@ -804,76 +850,9 @@ def main():
 
 	exit()
 
-
-	print("Embedding downloaded graph categories to vectors:")
-
-	if args.num_proc > 1:
-		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
-			results = pool.starmap(
-				embed_all_unseen_categories, args_list
-			)
-
-			for result in results:
-				vector_metadata += result
-	else:
-		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-			results = executor.map(
-				lambda args: embed_all_unseen_categories(*args), 
-				args_list
-			)
-		
-			for result in results:
-				vector_metadata += result
-
-	# for node in tqdm(downloaded_graph_nodes):
-	# 	# Query the vector DB for the category.
-	# 	# print(node)
-	# 	results = table.search()\
-	# 		.where(f"category = '{node}'")\
-	# 		.limit(1)\
-	# 		.to_list()
-	# 	# print(results)
-	# 	# print(len(results))
-	# 	# exit()
-	#
-	# 	# If the category does exist already, skip the entry.
-	# 	if len(results) != 0:
-	# 		continue
-	#
-	# 	# Embed the category and add it to the vector metadata.
-	# 	embedding = embed_text(tokenizer, model, device, node)
-	# 	vector_metadata.append({"category": node, "vector": embedding})
-	# with torch.no_grad():
-	# 	for node in tqdm(downloaded_graph_nodes):
-	# 		output = model(
-	# 			**tokenizer(
-	# 				node,
-	# 				add_special_tokens=False,
-	# 				padding="max_length",
-	# 				return_tensors="pt"
-	# 			).to(device)
-	# 		)
-	# 
-	# 		embedding = output[0].mean(dim=1)
-	# 		embedding = embedding.to("cpu")
-	# 		embedding = embedding.numpy()[0]
-	#
-	# 		vector_metadata.append(
-	# 			{"category": node, "vector": embedding}
-	# 		)
-
-	# Add the metadata.
-	# if len(vector_metadata) != 0:
-	# 	print(f"Adding {len(vector_metadata)} missing embeddings to vector DB.")
-	# 	table.add(data=vector_metadata, mode="append")
-	if vector_metadata != 0:
-		print(f"Added {vector_metadata} missing embeddings to vector DB.")
-
 	###################################################################
 	# COMPUTE REMAINING CATEGORY EMBEDDINGS
 	###################################################################
-	new_vector_metadata = []
-	# new_vector_metadata = 0
 
 	# NOTE:
 	# Seems to be CUDA OOM error when num_proc > 48 on server GPU (GPU 
@@ -909,42 +888,6 @@ def main():
 	# server. So no more than 256 items on the GPU at any time (for 
 	# depth 10 graph).
 
-
-	chunk_size = math.ceil(len(missing_categories) / divisor)
-	category_chunks = [
-		missing_categories[i:i + chunk_size]
-		for i in range(0, len(missing_categories), chunk_size)
-	]
-	args_list = [
-		(tokenizer, model, device, table, node_chunk, batch_size)
-		for node_chunk in category_chunks
-	]
-	print("Embedding remaining categories to vectors:")
-
-	if args.num_proc > 1:
-		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
-			results = pool.starmap(
-				embed_all_unseen_categories, args_list
-			)
-
-			for result in results:
-				new_vector_metadata += result
-	else:
-		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-			results = executor.map(
-				lambda args: embed_all_unseen_categories(*args), 
-				args_list
-			)
-		
-			for result in results:
-				new_vector_metadata += result
-
-	# Add the metadata.
-	if len(new_vector_metadata) != 0:
-		print(f"Adding {len(new_vector_metadata)} remaining missing embeddings to vector DB.")
-		table.add(data=new_vector_metadata, mode="append", on_bad_vectors="drop")
-	# if new_vector_metadata != 0:
-	# 	print(f"Added {new_vector_metadata} remaining missing embeddings to vector DB.")
 
 	###################################################################
 	# UPDATE GRAPH WITH MOST SIMILAR CATEGORIES AS CHILDREN
