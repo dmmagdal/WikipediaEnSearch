@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import copy
 from datetime import timedelta
 import json
+import gc
 import math
 import multiprocessing as mp
 import os
@@ -364,12 +365,12 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 
 		# Insert local data into the table once the local counter for
 		# number of batches has reached the set threshold.
-		if local_counter > 0 and local_counter % local_limit == 0 and append_to_chunk:
+		if local_counter > 0 and local_counter % local_limit == 0 and append_to_chunk and len(local_data) > 0:
 			table.add(data=local_data, mode="append") 
 			local_data = []
 
 	# Insert any remaining local data into the table.
-	if len(local_data) != 0 and append_to_chunk:
+	if len(local_data) > 0 and append_to_chunk:
 		table.add(data=local_data, mode="append")
 
 	# Return the list of all category, embedding pairs computed (if the
@@ -377,7 +378,7 @@ def embed_all_unseen_categories(tokenizer: AutoTokenizer, model: AutoModel, devi
 	return metadata
 
 
-def search_table_for_categories(table: lancedb.table, categories: List[str]) -> List[str]:
+def search_table_for_categories(table: lancedb.table, categories: List[str], chunk_size: int = 100) -> List[str]:
 	'''
 	Search the categories in the vector DB table and isolate which 
 		categories in the arguments list are already found in the 
@@ -386,23 +387,60 @@ def search_table_for_categories(table: lancedb.table, categories: List[str]) -> 
 		queried.
 	@param: categories (List[str]), the list of categories to check
 		against the entries in the vector DB table.
+	@param: chunk_size (int), the size of the chunks the categories
+		list will be broken up into in order to allow for faster 
+		querying. Default is 100.
 	@return: returns a List[str] containing all categories that were
 		found in the vector DB table.
 	'''
 	metadata = []
+	assert chunk_size > 0
 
-	for node in tqdm(categories):
-		# Query the vector DB for the category.
+	# Chunk the categories list.
+	category_chunks = [
+		categories[i:i + chunk_size]
+		for i in tqdm(range(0, len(categories), chunk_size))
+	]
+
+	del categories
+	gc.collect()
+
+	for chunk in tqdm(category_chunks):
+		nodes_for_query = ", ".join(
+			f"'{category}'" for category in chunk
+		)
+
 		results = table.search()\
-			.where(f"category = '{node}'")\
-			.limit(1)\
+			.where(f"category IN ({nodes_for_query})")\
 			.to_list()
 
-		# If the category does exist already, skip the entry.
-		if len(results) != 0:
-			metadata.append(node)
-	
+		if len(results) > 0:
+			metadata += [result["category"] for result in results]
+			# print(json.dumps(metadata, indent=4))
+			# exit()
+
+		del nodes_for_query
+		del results
+		gc.collect()
+
 	return metadata
+
+	# print(len(results))
+	# print(results[0])
+	# exit()
+
+	# for node in tqdm(categories):
+	# 	# Query the vector DB for the category.
+	# 	results = table.search()\
+	# 		.where(f"category = '{node}'")\
+	# 		.limit(1)\
+	# 		.to_list()
+
+	# 	# If the category does exist already, skip the entry.
+	# 	if len(results) != 0:
+	# 		metadata.append(node)
+	
+	# return metadata
 
 
 def main():
@@ -592,14 +630,32 @@ def main():
 	# - 10 minutes
 	# - 23 GB RAM
 
+	# 1 processor
+	#search_chunk_size = 10_000
+	# - full database
+	# - 36 GB RAM
+	# - 45 minutes
+	# - empty data
+	# - 13 GB RAM
+	# - 25 minutes
+	# 16 processors
+	#search_chunk_size = 1_000
+	# - 44 GB RAM
+	#search_chunk_size = 500
+	# - 32 GB RAM
+	#search_chunk_size = 100
+	# - 23.5 GB RAM
+
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
 	chunk_size = math.ceil(len(all_categories) / divisor)
+	search_chunk_size = 10_000
 	category_node_chunks = [
 		all_categories_list[i:i + chunk_size]
 		for i in range(0, len(all_categories), chunk_size)
 	]
 	args_list = [
-		(table, node_chunk) for node_chunk in category_node_chunks
+		(table, node_chunk, search_chunk_size) 
+		for node_chunk in category_node_chunks
 	]
 	
 	if args.num_proc > 1:
@@ -620,9 +676,13 @@ def main():
 			for result in results:
 				found_categories += result
 
+	print(len(all_categories_list))
+	print(len(found_categories))
 	del all_categories_list
 	all_categories.difference_update(found_categories)
 	all_categories = list(all_categories)
+	print(len(all_categories))
+	# exit()
 	
 	###################################################################
 	# COMPUTE DOWNLOAD GRAPH EMBEDDINGS
@@ -698,7 +758,7 @@ def main():
 	# 1 processor @ batch size 256:
 	# - for all new embeddings
 	#    -  hours
-	#    - 9.6 GB VRAM
+	#    - 13.6 GB VRAM
 	# - for no new embeddings
 	#    - hours
 	# - GB RAM
