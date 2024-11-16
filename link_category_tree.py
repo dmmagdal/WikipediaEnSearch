@@ -421,10 +421,16 @@ def search_table_for_categories(table: lancedb.table, categories: List[str], chu
 
 		results = table.search()\
 			.where(f"category IN ({nodes_for_query})")\
+			.limit(len(chunk))\
 			.to_list()
+		
+		# NOTE:
+		# Be sure to specify limit. Default limit (no .limit()) is 10.
 
 		if len(results) > 0:
 			metadata += [result["category"] for result in results]
+			# print(len(results))
+			# print(len(metadata))
 			# print(json.dumps(metadata, indent=4))
 			# exit()
 
@@ -655,7 +661,15 @@ def main():
 	#search_chunk_size = 100
 	# - 23.5 GB RAM
 
-	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
+
+	# With paralleization (Updated)
+	# 11 GB RAM
+	# 20 minutes empty table
+	# 30 GB RAM
+	# 9 hours full table
+
+	# divisor = args.num_proc if args.num_proc > 1 else args.num_thread
+	divisor = args.num_thread
 	chunk_size = math.ceil(len(all_categories) / divisor)
 	search_chunk_size = 10_000
 	category_node_chunks = [
@@ -667,23 +681,14 @@ def main():
 		for node_chunk in category_node_chunks
 	]
 	
-	if args.num_proc > 1:
-		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
-			results = pool.starmap(
-				search_table_for_categories, args_list
-			)
-
-			for result in results:
-				found_categories += result
-	else:
-		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-			results = executor.map(
-				lambda args: search_table_for_categories(*args), 
-				args_list
-			)
-		
-			for result in results:
-				found_categories += result
+	with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+		results = executor.map(
+			lambda args: search_table_for_categories(*args), 
+			args_list
+		)
+	
+		for result in results:
+			found_categories += result
 
 	print(len(all_categories_list))
 	print(len(found_categories))
@@ -691,7 +696,7 @@ def main():
 	all_categories.difference_update(found_categories)
 	all_categories = list(all_categories)
 	print(len(all_categories))
-	# exit()
+	exit()
 	
 	###################################################################
 	# COMPUTE AND STORE REMAINING EMBEDDINGS
@@ -735,6 +740,12 @@ def main():
 	# Anything bigger results in CUDA OOM on a single 16GB VRAM GPU on 
 	# server. So no more than 256 items on the GPU at any time (for 
 	# depth 10 graph).
+
+	# With paralleization (Updated)
+	# 16 x 16
+	# 43 GB RAM
+	# 14.2 GB VRAM
+	# ~21 hours
 
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
 	check_for_category = False
