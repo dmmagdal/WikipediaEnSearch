@@ -772,6 +772,9 @@ def main():
 						mode="append", 
 						on_bad_vectors="drop"
 					)
+
+				del results
+				gc.collect()
 	else:
 		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
 			results = executor.map(
