@@ -668,8 +668,8 @@ def main():
 	# 30 GB RAM
 	# 9 hours full table
 
-	# divisor = args.num_proc if args.num_proc > 1 else args.num_thread
-	divisor = args.num_thread
+	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
+	# divisor = args.num_thread
 	chunk_size = math.ceil(len(all_categories) / divisor)
 	search_chunk_size = 10_000
 	category_node_chunks = [
@@ -681,14 +681,23 @@ def main():
 		for node_chunk in category_node_chunks
 	]
 	
-	with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-		results = executor.map(
-			lambda args: search_table_for_categories(*args), 
-			args_list
-		)
-	
-		for result in results:
-			found_categories += result
+	if args.num_proc > 1:
+		with mp.Pool(min(args.num_proc, mp.cpu_count())) as pool:
+			results = pool.starmap(
+				search_table_for_categories, args_list
+			)
+		
+			for result in results:
+				found_categories += result
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			results = executor.map(
+				lambda args: search_table_for_categories(*args), 
+				args_list
+			)
+		
+			for result in results:
+				found_categories += result
 
 	print(len(all_categories_list))
 	print(len(found_categories))
