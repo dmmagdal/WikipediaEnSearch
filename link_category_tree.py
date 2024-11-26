@@ -21,6 +21,7 @@ import lancedb
 import msgpack
 import networkx as nx
 import numpy as np
+import psutil
 import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
@@ -516,6 +517,12 @@ def main():
 		default=1,
 		help="Batch size for processing data to embedding model. Default is 1/not specified."
 	)
+	parser.add_argument(
+		"--search_chunk_size",
+		type=int,
+		default=-1,
+		help="The batch size for the number of texts that are going to be searched in the vector db. Default is -1/not specified."
+	)
 
 	# Parse arguments.
 	args = parser.parse_args()
@@ -661,17 +668,46 @@ def main():
 	#search_chunk_size = 100
 	# - 23.5 GB RAM
 
+	if args.search_chunk_size == -1:
+		# Get the amount of RAM available to the system (in GB).
+		memory_available = psutil.virtual_memory()[0] / (10 ** 9) 
 
-	# With paralleization (Updated)
+		# Set the search chunk base size based on the amount of available
+		# memory.
+		if memory_available < 32:
+			search_chunk_base = 100
+		elif memory_available < 48:
+			search_chunk_base = 500
+		elif memory_available < 54:
+			search_chunk_base = 1_000
+		else:
+			search_chunk_base = 10_000
+	else:
+		# Set the search chunk size based on the user input.
+		assert args.search_chunk_size > 0, \
+			f"Argument --search_chunk_size is supposed to be > 0 if specified. Received {args.search_chunk_size}"
+		search_chunk_base = args.search_chunk_size
+
+	# With parallelization (Updated)
 	# 11 GB RAM
 	# 20 minutes empty table
 	# 30 GB RAM
 	# 9 hours full table
 
+	# Full vector db
+	# 16 processors (batch size 16)
+	# 46 GB RAM
+	# 1 hour
+	# search chunk size = 10,000 / 16
+	# 8 processors (batch size 32)
+	# 40 GB RAM
+	# 2 hours
+	# search chunk size = 10,000 / 32
+
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
 	# divisor = args.num_thread
 	chunk_size = math.ceil(len(all_categories) / divisor)
-	search_chunk_size = 10_000
+	search_chunk_size = math.ceil(search_chunk_base / divisor)
 	category_node_chunks = [
 		all_categories_list[i:i + chunk_size]
 		for i in range(0, len(all_categories), chunk_size)
