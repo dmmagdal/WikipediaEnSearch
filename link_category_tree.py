@@ -674,11 +674,11 @@ def main():
 
 		# Set the search chunk base size based on the amount of available
 		# memory.
-		if memory_available < 32:
+		if memory_available <= 8:
 			search_chunk_base = 100
-		elif memory_available < 48:
+		elif memory_available <= 16:
 			search_chunk_base = 500
-		elif memory_available < 54:
+		elif memory_available <= 32:
 			search_chunk_base = 1_000
 		else:
 			search_chunk_base = 10_000
@@ -694,18 +694,49 @@ def main():
 	# 30 GB RAM
 	# 9 hours full table
 
-	# Full vector db
+	# Full vector db with max search chunk base (10,000)
 	# 16 processors (batch size 16)
 	# 46 GB RAM
 	# 1 hour
 	# search chunk size = 10,000 / 16
 	# 8 processors (batch size 32)
+	# 43 GB RAM
+	# 1.5 hours
+	# search chunk size = 10,000 / 8
+	# 4 processors (batch size 64)
+	# 41 GB RAM
+	# 2.5 hours
+	# search chunk size = 10,000 / 4
+	# 1 processor (batch size 256)
 	# 40 GB RAM
-	# 2 hours
-	# search chunk size = 10,000 / 32
+	# 9 hours
+	# search chunk size = 10,000 / 1
+
+	# Full vector db with search chunk base (1,000)
+	# 16 processors (batch size 16)
+	# 23 GB RAM
+	# 1.5 hours
+	# search chunk size = 1,000 / 16
+	# 8 processors (batch size 32)
+	# 20 GB RAM
+	# 3 hours
+	# search chunk size = 1,000 / 8
+	# 4 processors (batch size 64)
+	# 19 GB RAM
+	# 4.5 hours
+	# search chunk size = 1,000 / 4
+	# 1 processor (batch size 256)
+	# 16 GB RAM
+	# 17 hours
+	# search chunk size = 1,000 / 1
+
+	# NOTE:
+	# Increased seearch chunk size means faster preprocessing with this
+	# initial search in the vector DB at the cost of much higher RAM 
+	# usage.
 
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
-	# divisor = args.num_thread
+	# divisor = args.num_thread # used for when num_proc > 1 was not working properly.
 	chunk_size = math.ceil(len(all_categories) / divisor)
 	search_chunk_size = math.ceil(search_chunk_base / divisor)
 	category_node_chunks = [
