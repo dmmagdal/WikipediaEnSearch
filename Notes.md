@@ -109,6 +109,11 @@
  - [Breaking up is hard to do: Chunking in RAG applications](https://stackoverflow.blog/2024/06/06/breaking-up-is-hard-to-do-chunking-in-rag-applications)
 
 
+### Embedding
+
+ - [Binary and scalar embedding quantization for significantly faster & cheaper retrieval](https://huggingface.co/blog/embedding-quantization)
+
+
 ### Doc2Vec
 
  - [Gensim Doc2Vec Documentation](https://radimrehurek.com/gensim/models/doc2vec.html)
@@ -120,3 +125,9 @@
 
  - [Developing a Search Engine Framework for Wikipedia Articles](https://medium.com/@akleber/developing-a-search-engine-framework-for-wikipedia-articles-81fcbd95a928)
  - [Improving Vector Search to Find the Most Relevant Documents](https://medium.com/@PascalBiese/improving-vector-search-to-find-the-most-relevant-papers-ce6b6d4222f1)
+ - [Multilingual GPU-Powered Topic Modeling at Scale](https://medium.com/bumble-tech/multilingual-gpu-powered-topic-modelling-at-scale-dc8bd08609ef)
+     - RAPIDs package [homepage](https://rapids.ai/)
+ - [Hybrid Search: Combining BM25 and Semantic Search for Better Results with Langchain](https://medium.com/etoai/hybrid-search-combining-bm25-and-semantic-search-for-better-results-with-lan-1358038fe7e6)
+ - [Building a better RAG: A practical guide to two-step retrieval with langchain](https://medium.com/@alihaydargulec/building-a-better-rag-a-practical-guide-to-two-step-retrieval-with-langchain-e9ffe6e8aa8b)
+ - [Rerankers and two-stage retrieval](https://www.pinecone.io/learn/series/rag/rerankers/)
+ - [What is RAG? Enhancing LLMs with dynamic information access](https://sendbird.com/developer/tutorials/rag)

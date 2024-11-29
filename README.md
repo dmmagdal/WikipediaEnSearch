@@ -364,6 +364,8 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Learn Cython [pdf](https://github.com/GeorgeQLe/Textbooks-and-Papers/blob/master/%5BPython%5D%20Learning%20Cython%20Programming.pdf)
  - LanceDB
      - Quick Start [documentation](https://lancedb.github.io/lancedb/basic/)
+     - Python API Reference [documentation](https://lancedb.github.io/lancedb/python/python/)
+     - Filtering [documentation](https://lancedb.github.io/lancedb/sql/)
      - Full Text Search [documentation](https://lancedb.github.io/lancedb/fts/)
      - Working with Tables [documentation](https://lancedb.github.io/lancedb/guides/tables/)
      - ANN Indexes [documentation](https://lancedb.github.io/lancedb/ann_indexes/)
@@ -371,6 +373,11 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Storage [docoumentation](https://lancedb.github.io/lancedb/concepts/storage/)
          - Primarily for local disk storage
      - FAQs [documentation](https://lancedb.github.io/lancedb/faq/)
+     - Lance [documentation](https://lancedb.github.io/lance/read_and_write.html)
+     - Restack Framework [transaction overview with lancedb](https://www.restack.io/p/lancedb-answer-transactions-cat-ai) 
+     - Benchmarking LanceDB [medium article](https://medium.com/etoai/benchmarking-lancedb-92b01032874a)
+     - Benchmarking LanceDB [lancedb blog](https://blog.lancedb.com/benchmarking-lancedb-92b01032874a/)
+     - Rust [crate](https://crates.io/crates/lancedb)
  - Milvus [documentation](https://milvus.io/docs/insert-update-delete.md)
  - Cosine Similarity
      - Wikipedia [article](https://en.wikipedia.org/wiki/Cosine_similarity)
