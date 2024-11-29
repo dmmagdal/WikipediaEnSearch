@@ -429,11 +429,13 @@ def search_table_for_categories(table: lancedb.table, categories: List[str], chu
 		# Be sure to specify limit. Default limit (no .limit()) is 10.
 
 		if len(results) > 0:
-			metadata += [result["category"] for result in results]
-			# print(len(results))
-			# print(len(metadata))
-			# print(json.dumps(metadata, indent=4))
-			# exit()
+			# metadata += [result["category"] for result in results] # (OLD) Build metadata list by adding categories detected
+			result_categories = [result["category"] for result in results]
+			metadata += [
+				category 
+				for category in chunk 
+				if category not in result_categories
+			] # (NEW) Build metadata list by adding categories that were NOT detected
 
 		del nodes_for_query
 		del results
@@ -765,6 +767,14 @@ def main():
 		
 			for result in results:
 				found_categories += result
+
+	# NOTE:
+	# As of 11/29/2024, I'm trying to implement the search via 
+	# subtraction. In other words, I'm only adding categories that
+	# were NOT found in the existing vector db. This should make things
+	# much faster and have a memory overhead for when the user is 
+	# starting with an empty vector db (a full vector db should result
+	# in minimal overhead from the list returned).
 
 	print(len(all_categories_list))
 	print(len(found_categories))
