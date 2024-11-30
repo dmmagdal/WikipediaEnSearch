@@ -443,23 +443,6 @@ def search_table_for_categories(table: lancedb.table, categories: List[str], chu
 
 	return metadata
 
-	# print(len(results))
-	# print(results[0])
-	# exit()
-
-	# for node in tqdm(categories):
-	# 	# Query the vector DB for the category.
-	# 	results = table.search()\
-	# 		.where(f"category = '{node}'")\
-	# 		.limit(1)\
-	# 		.to_list()
-
-	# 	# If the category does exist already, skip the entry.
-	# 	if len(results) != 0:
-	# 		metadata.append(node)
-	
-	# return metadata
-
 
 def main():
 	'''
@@ -698,7 +681,7 @@ def main():
 
 	# Full vector db with max search chunk base (10,000)
 	# 16 processors (batch size 16)
-	# 46 GB RAM
+	# 46 GB RAM (46 GB with subtraction)
 	# 1 hour
 	# search chunk size = 10,000 / 16
 	# 8 processors (batch size 32)
@@ -728,7 +711,7 @@ def main():
 	# 4.5 hours
 	# search chunk size = 1,000 / 4
 	# 1 processor (batch size 256)
-	# 16 GB RAM
+	# 16.5 GB RAM
 	# 17 hours
 	# search chunk size = 1,000 / 1
 
@@ -779,10 +762,11 @@ def main():
 	print(len(all_categories_list))
 	print(len(found_categories))
 	del all_categories_list
-	all_categories.difference_update(found_categories)
-	all_categories = list(all_categories)
+	all_categories = found_categories
+	# all_categories.difference_update(found_categories)
+	# all_categories = list(all_categories)
 	print(len(all_categories))
-	exit()
+	# exit()
 	
 	###################################################################
 	# COMPUTE AND STORE REMAINING EMBEDDINGS
@@ -886,7 +870,6 @@ def main():
 					mode="append", 
 					on_bad_vectors="drop"
 				)
-
 	
 	exit()
 
@@ -938,15 +921,6 @@ def main():
 		
 			for result in results:
 				vector_metadata += result
-	
-	# Add the metadata.
-	# if len(vector_metadata) != 0:
-	# 	print(f"Adding {len(vector_metadata)} missing embeddings to vector DB.")
-	# 	table.add(
-	# 		data=vector_metadata, 
-	# 		mode="append", 
-	# 		on_bad_vectors="drop"
-	# 	)
 
 	exit()
 
