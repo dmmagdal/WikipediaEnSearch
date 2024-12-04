@@ -1,7 +1,7 @@
 accelerate==0.30.1
 beautifulsoup4==4.12.1
 faiss-cpu==1.7.3
-lancedb==0.8.0
+lancedb==0.16.0
 lxml==4.9.1
 matplotlib==3.9.2
 maturin==1.7.0

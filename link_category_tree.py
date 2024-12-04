@@ -18,6 +18,7 @@ import pyarrow as pa
 from typing import Dict, List, Set, Any
 
 import lancedb
+from lancedb.table import LanceTable
 import msgpack
 import networkx as nx
 import numpy as np
@@ -242,7 +243,7 @@ def embed_all_unseen_categories(
 	tokenizer: AutoTokenizer, 
 	model: AutoModel, 
 	device: str, 
-	table: lancedb.table, 
+	table: LanceTable, 
 	categories: List[str], 
 	batch_size: int = 1, 
 	check_for_duplicates: bool = True
@@ -388,7 +389,7 @@ def embed_all_unseen_categories(
 	return metadata
 
 
-def search_table_for_categories(table: lancedb.table, categories: List[str], chunk_size: int = 100) -> List[str]:
+def search_table_for_categories(table: LanceTable, categories: List[str], chunk_size: int = 100) -> List[str]:
 	'''
 	Search the categories in the vector DB table and isolate which 
 		categories in the arguments list are already found in the 
@@ -424,18 +425,66 @@ def search_table_for_categories(table: lancedb.table, categories: List[str], chu
 			.where(f"category IN ({nodes_for_query})")\
 			.limit(len(chunk))\
 			.to_list()
+		# print(nodes_for_query)
+		# print(len(results))
+		# print(type(table))
 		
 		# NOTE:
 		# Be sure to specify limit. Default limit (no .limit()) is 10.
 
-		if len(results) > 0:
-			# metadata += [result["category"] for result in results] # (OLD) Build metadata list by adding categories detected
-			result_categories = [result["category"] for result in results]
-			metadata += [
-				category 
-				for category in chunk 
-				if category not in result_categories
-			] # (NEW) Build metadata list by adding categories that were NOT detected
+		# if len(results) > 0:
+		# 	# metadata += [result["category"] for result in results] # (OLD) Build metadata list by adding categories detected
+		# 	result_categories = [result["category"] for result in results]
+		# 	metadata += [
+		# 		category 
+		# 		for category in chunk 
+		# 		if category not in result_categories
+		# 	] # (NEW) Build metadata list by adding categories that were NOT detected
+		result_categories = [result["category"] for result in results]
+		metadata += [
+			category 
+			for category in chunk 
+			if category not in result_categories
+		] # (NEW) Build metadata list by adding categories that were NOT detected
+
+		del nodes_for_query
+		del results
+		gc.collect()
+
+	return metadata
+
+
+def get_table_entries(table: LanceTable, categories: List[str], chunk_size: int = 100) -> List[Dict[str, str | np.ndarray]]:
+	
+	metadata = []
+	assert chunk_size > 0
+
+	# Chunk the categories list.
+	category_chunks = [
+		categories[i:i + chunk_size]
+		for i in tqdm(range(0, len(categories), chunk_size))
+	]
+
+	del categories
+	gc.collect()
+
+	for chunk in tqdm(category_chunks):
+		nodes_for_query = ", ".join(
+			f"'{category}'" for category in chunk
+		)
+
+		results = table.search()\
+			.where(f"category IN ({nodes_for_query})")\
+			.limit(len(chunk))\
+			.to_list()
+		# print(len(results))
+		
+		# NOTE:
+		# Be sure to specify limit. Default limit (no .limit()) is 10.
+
+		# if len(results) > 0:
+		# 	metadata += results
+		metadata += results
 
 		del nodes_for_query
 		del results
@@ -508,6 +557,11 @@ def main():
 		default=-1,
 		help="The batch size for the number of texts that are going to be searched in the vector db. Default is -1/not specified."
 	)
+	parser.add_argument(
+		"--cleanup_when_done",
+		action="store_true",
+		help="Whether to delete the filtered table after the main program has been completed. Default is false/not specified."
+	)
 
 	# Parse arguments.
 	args = parser.parse_args()
@@ -532,9 +586,14 @@ def main():
 
 	# Load the downloaded graph.
 	downloaded_graph = load_graph(downloaded_graph_path, extension)
+	downloaded_graph = {
+		preprocess_category_text(key): value 
+		for key, value in nx.to_dict_of_lists(downloaded_graph).items()
+	}
 	downloaded_graph_nodes = [
 		preprocess_category_text(node) 
-		for node in list(downloaded_graph.nodes())
+		# for node in list(downloaded_graph.nodes())
+		for node in list(downloaded_graph.keys())
 	]
 
 	# NOTE:
@@ -613,6 +672,10 @@ def main():
 		f"cat_to_doc.{metadata_extension}"
 	)
 	cat_to_docs = load_data_file(cat_to_doc_path, use_json)
+	cat_to_docs = {
+		preprocess_category_text(key): value
+		for key, value in cat_to_docs.items()
+	}
 	missing_categories = rsh.set_difference(
 		set(downloaded_graph_nodes), set(cat_to_docs.keys())
 	)
@@ -681,7 +744,7 @@ def main():
 
 	# Full vector db with max search chunk base (10,000)
 	# 16 processors (batch size 16)
-	# 46 GB RAM (46 GB with subtraction)
+	# 46 GB RAM (46 GB with subtraction/no change)
 	# 1 hour
 	# search chunk size = 10,000 / 16
 	# 8 processors (batch size 32)
@@ -721,7 +784,6 @@ def main():
 	# usage.
 
 	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
-	# divisor = args.num_thread # used for when num_proc > 1 was not working properly.
 	chunk_size = math.ceil(len(all_categories) / divisor)
 	search_chunk_size = math.ceil(search_chunk_base / divisor)
 	category_node_chunks = [
@@ -771,7 +833,6 @@ def main():
 	###################################################################
 	# COMPUTE AND STORE REMAINING EMBEDDINGS
 	###################################################################
-	vector_metadata = []
 
 	# NOTE:
 	# Runtime on server
@@ -822,15 +883,11 @@ def main():
 	chunk_size = math.ceil(len(all_categories) / divisor)
 	write_chunk_size = 100_000
 	category_node_chunks = [
-		# all_categories[i:i + chunk_size]
-		# for i in range(0, len(all_categories), chunk_size)
 		all_categories[i:i + write_chunk_size]
 		for i in range(0, len(all_categories), write_chunk_size)
 	]
 	args_list = [
 		(
-			# tokenizer, model, device, table, node_chunk, batch_size, 
-			# check_for_category
 			tokenizer, model, device, table, node_chunk, batch_size, 
 			check_for_category
 		)
@@ -871,7 +928,7 @@ def main():
 					on_bad_vectors="drop"
 				)
 	
-	exit()
+	# exit()
 
 	# NOTE:
 	# On server, fewer processors/threads means longer runtime but 
@@ -904,25 +961,13 @@ def main():
 	# server. So no more than 256 items on the GPU at any time (for 
 	# depth 10 graph).
 
-	if args.num_proc > 1:
-		with mp.Pool(min(mp.cpu_count(), args.num_proc)) as pool:
-			results = pool.starmap(
-				embed_all_unseen_categories, args_list
-			)
+	# NOTE:
+	# The following code here did not chunk the data in pieces of 100K
+	# per thread. This would result in OOM issues when it came to ]
+	# writing the embeddings to vector DB table. It has since been 
+	# removed.
 
-			for result in results:
-				vector_metadata += result
-	else:
-		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-			results = executor.map(
-				lambda args: embed_all_unseen_categories(*args), 
-				args_list
-			)
-		
-			for result in results:
-				vector_metadata += result
-
-	exit()
+	# exit()
 
 	###################################################################
 	# COMPUTE REMAINING CATEGORY EMBEDDINGS
@@ -966,37 +1011,184 @@ def main():
 	###################################################################
 	# UPDATE GRAPH WITH MOST SIMILAR CATEGORIES AS CHILDREN
 	###################################################################
-	nodes_for_query = ", ".join(
-		f"'{category}'" for category in tqdm(downloaded_graph_nodes)
+	# nodes_for_query = ", ".join(
+	# 	f"'{category}'" for category in tqdm(downloaded_graph_nodes)
+	# )
+	# print(nodes_for_query[:100])
+	# print(downloaded_graph_nodes[:5])
+	# print(list(cat_to_docs.keys())[:5])
+	# exit()
+
+
+	# Copy only entries containing the downloaded graph nodes to a
+	# "filtered" table.
+	filtered_table_name = f"filtered_{table_name}"
+	filtered_table_in_db = filtered_table_name in table_names
+	if not filtered_table_in_db or (filtered_table_in_db and refresh_table):
+		if filtered_table_in_db:
+			db.drop_table(filtered_table_name)
+
+		filtered_table = db.create_table(
+			filtered_table_name, schema=schema
+		)
+	else:
+		filtered_table = db.open_table(filtered_table_name)
+		
+	copy_chunk_size = 1_000
+	# for node_idx in tqdm(range(0, len(downloaded_graph_nodes), copy_chunk_size)):
+	# 	chunk = downloaded_graph_nodes[node_idx:node_idx + copy_chunk_size]
+
+	# 	nodes_for_query = ", ".join(
+	# 		f"'{category}'" for category in chunk
+	# 	)
+
+	# 	entries = table.search()\
+	# 		.where(f"category IN ({nodes_for_query})")\
+	# 		.limit(len(chunk))\
+	# 		.to_list()
+		
+	# 	if len(entries) > 0:
+	# 		filtered_table.add(entries)
+
+
+	###################################################################
+	# Parallelize the following from above
+	# 1) Search for and eliminate known entries in the filtered table
+	# 2) Add missing entries to the filtered table
+	###################################################################
+	print("Isolating categories already stored in filter table")
+	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
+	# divisor = args.num_thread # used for when num_proc > 1 was not working properly.
+	chunk_size = math.ceil(len(downloaded_graph_nodes) / divisor)
+	search_chunk_size = math.ceil(copy_chunk_size / divisor)
+	category_node_chunks = [
+		downloaded_graph_nodes[i:i + chunk_size]
+		for i in range(0, len(downloaded_graph_nodes), chunk_size)
+	]
+	args_list = [
+		(filtered_table, node_chunk, search_chunk_size) 
+		for node_chunk in category_node_chunks
+	]
+	remaining_filtered_categories = []
+	
+	if args.num_proc > 1:
+		with mp.Pool(min(args.num_proc, mp.cpu_count())) as pool:
+			results = pool.starmap(
+				search_table_for_categories, args_list
+			)
+		
+			for result in results:
+				remaining_filtered_categories += result
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			results = executor.map(
+				lambda args: search_table_for_categories(*args), 
+				args_list
+			)
+		
+			for result in results:
+				remaining_filtered_categories += result
+
+	print(f"Number of remaining results: {len(remaining_filtered_categories)}")
+	# exit()
+
+	print("Copying over remaining entries to filtered table.")
+	divisor = args.num_proc if args.num_proc > 1 else args.num_thread
+	chunk_size = math.ceil(len(remaining_filtered_categories) / divisor)
+	write_chunk_size = math.ceil(copy_chunk_size / divisor)
+	category_node_chunks = [
+		remaining_filtered_categories[i:i + write_chunk_size]
+		for i in range(0, len(remaining_filtered_categories), write_chunk_size)
+	]
+	args_list = [
+		(
+			table, node_chunk, write_chunk_size
+		)
+		for node_chunk in category_node_chunks
+	]
+	if args.num_proc > 1:
+		num_cpus = min(mp.cpu_count(), args.num_proc)
+		with mp.Pool(num_cpus) as pool:
+			for i in range(0, len(args_list), num_cpus):
+				print(f"processing chunks {i + 1} to {i + num_cpus} (out of {len(args_list)})")
+				results = pool.starmap(
+					get_table_entries, args_list[i:i + num_cpus]
+				)
+
+				for result in results:
+					filtered_table.add(
+						data=result, 
+						mode="append", 
+						on_bad_vectors="drop"
+					)
+
+				del results
+				gc.collect()
+	else:
+		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
+			results = executor.map(
+				lambda args: get_table_entries(*args), 
+				args_list
+			)
+		
+			for result in results:
+				# vector_metadata += result
+				filtered_table.add(
+					data=result, 
+					mode="append", 
+					on_bad_vectors="drop"
+				)
+
+	print("Finished loading missing categories to filtered table")
+
+	exit()
+	###################################################################s
+
+
+
+	table.create_index(metric="cosine", vector_column_name="vector")
+	filtered_table.create_index(
+		metric="cosine", vector_column_name="vector"
 	)
-	print(nodes_for_query[:100])
-	print(downloaded_graph_nodes[:5])
-	print(list(cat_to_docs.keys())[:5])
-	exit(0)
+	digraph = nx.DiGraph(downloaded_graph)
+
 	for node in tqdm(missing_categories):
 		# Get current category node embedding.
-		_, embedding = table.search()\
+		category_embedding = table.search()\
 			.where(f"category = '{node}'")\
 			.limit(1)\
 			.to_list()
+		embedding = category_embedding[0]["vector"]
 
-		# Search for "closest" node embedding from the graph.
-		best_category, _ = table.search(embedding)\
-			.where(f"category IN ({nodes_for_query})")\
+		# Search for "closest" node embedding from the graph. Use 
+		# Cosine metric since defaul is L2.
+		# nearest_embedding = table.search(embedding)\
+		# 	.where(f"category IN ({nodes_for_query})")\
+		# 	.limit(1)\
+		# 	.to_list()
+		nearest_embedding = filtered_table.search(embedding)\
 			.limit(1)\
 			.to_list()
+		# print(nearest_embedding)
+		best_category = nearest_embedding[0]["category"]
 
 		# Create an edge in the downloaded graph connecting the "best
 		# matching" category (from the original downloaded graph) to
 		# the current category node from the "missing" categories list.
-		downloaded_graph.add_edge(best_category, node)
+		# downloaded_graph.add_edge(best_category, node)
+		digraph.add_edge(best_category, node)
 
 	# Save the updated category tree graph.
 	output_graph_path = os.path.join(
 		"./wiki_category_graphs",
 		f"wiki_categories_depth{depth}_full.{extension}"
 	)
-	save_graph(downloaded_graph, output_graph_path, extension)
+	# save_graph(downloaded_graph, output_graph_path, extension)
+	save_graph(digraph, output_graph_path, extension)
+
+	if args.cleanup_when_done:
+		# Drop the filtered table.
+		db.drop_table(filtered_table_name)
 
 	# Exit the program.
 	exit(0)
