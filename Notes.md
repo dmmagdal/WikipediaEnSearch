@@ -131,3 +131,20 @@
  - [Building a better RAG: A practical guide to two-step retrieval with langchain](https://medium.com/@alihaydargulec/building-a-better-rag-a-practical-guide-to-two-step-retrieval-with-langchain-e9ffe6e8aa8b)
  - [Rerankers and two-stage retrieval](https://www.pinecone.io/learn/series/rag/rerankers/)
  - [What is RAG? Enhancing LLMs with dynamic information access](https://sendbird.com/developer/tutorials/rag)
+
+
+### Python Acceleration with Rust
+
+ - [How to use Rust with Python, and Python with Rust](https://www.infoworld.com/article/2335770/how-to-use-rust-with-python-and-python-with-rust.html)
+ - [How to use PyO3 to write Python extensions in Rust](https://www.youtube.com/watch?v=fgC8YxNwBfQ)
+ - [How To Make Your Python Packages Really Fast With RUST](https://www.youtube.com/watch?v=jlWhnrk8go0)
+ - [Which programming language is faster at reading?](https://dev.to/fredysandoval/which-programming-language-is-faster-at-reading-10gn)
+
+
+### NLP Frameworks/Libraries in Other Languages
+
+ - C++
+     - [8 Excellent C++ Natural Language Processing Tools](https://www.linuxlinks.com/excellent-c-plus-plus-natural-language-processing-tools/)
+         - [MITIE: MIT Information Extraction](https://www.linuxlinks.com/mitie-mit-information-extraction/)
+         - [MeTA – modern C++ data sciences toolkit](https://www.linuxlinks.com/meta-modern-c-plus-plus-data-sciences-toolkit/)
+     - Facebook AI Research [fastText repo](https://github.com/facebookresearch/fastText)

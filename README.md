@@ -366,6 +366,7 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Quick Start [documentation](https://lancedb.github.io/lancedb/basic/)
      - Python API Reference [documentation](https://lancedb.github.io/lancedb/python/python/)
      - Filtering [documentation](https://lancedb.github.io/lancedb/sql/)
+     - Vector Search [documentation](https://lancedb.github.io/lancedb/search/)
      - Full Text Search [documentation](https://lancedb.github.io/lancedb/fts/)
      - Working with Tables [documentation](https://lancedb.github.io/lancedb/guides/tables/)
      - ANN Indexes [documentation](https://lancedb.github.io/lancedb/ann_indexes/)
