@@ -464,7 +464,7 @@ def main():
 	device = "cpu"
 	if not use_cpu:
 		if torch.cuda.is_available():
-			device = "cuda:1"
+			device = "cuda:0"
 
 			# Clear cache from GPU.
 			torch.cuda.empty_cache()
@@ -804,8 +804,8 @@ def main():
 		print("Running tests on indices.")
 
 		# Define accelerator based on device.
-		accelerator_device = device if device != "cpu" else None
-		print(f"Using accelerator device: {accelerator_device if accelerator_device else 'cpu'}")
+		# accelerator_device = device if device != "cpu" else None
+		# print(f"Using accelerator device: {accelerator_device if accelerator_device else 'cpu'}")
 
 		# Different indexes.
 		flat_index = db.open_table(table_name)
@@ -813,7 +813,7 @@ def main():
 		ivf_pq_index.create_index(
 			metric="cosine",
 			vector_column_name="vector",
-			accelerator=accelerator_device
+			# accelerator=accelerator_device
 		)
 		# hnsw_index = db.open_table(table_name)
 		# hnsw_index.create_index(
@@ -830,13 +830,23 @@ def main():
 
 		# Randomly sample categories.
 		target_categories = random.sample(all_categories, 5)
-		target_category_embeddings = [
-			embed_text(tokenizer, model, device, category)
-			for category in target_categories
+		original_queries = [
+			"Who ran the 1936 track and field games for America?",			# Jesse Owens
+			"What skyscraper in Dubai is the world's tallest structure?",	# Burj Khalifa
+			"Name the fighter jet used in the movie Top Gun",				# F-14A Tomcat
+			"What color are sapphires?",									# Blue/green/etc
+			"Given an example of a shonen manga",							# Bleach/Dragon Ball/etc
 		]
+		target_categories += original_queries
+		target_category_embeddings = embed_text(
+			tokenizer, model, device, target_categories
+		)
 
-		for category, embedding in zip(target_categories, target_category_embeddings):
+		# for category, embedding in zip(target_categories, target_category_embeddings):
+		for idx, category in enumerate(target_categories):
 			print(f"Target: {category}")
+			embedding = target_category_embeddings[idx]
+
 			for k in k_options:
 				print(f"Top {k} results:")
 
@@ -860,11 +870,27 @@ def main():
 
 				# Output results.
 				print(f"Flat index:")
-				print(f"\tquery time: {flat_elapsed_time}")
-				print(f"\tposition: {flat_target_index}")
+				print(f"\tquery time: {flat_elapsed_time:.4f}s")
+				if category not in original_queries:
+					print(f"\tposition: {flat_target_index}")
+				print(f"\tTop 10 results:")
+				print(
+					json.dumps(
+						[result["category"] for result in flat_results[:10]],
+						indent=4
+					)
+				)
 				print(f"IVF-PQ index:")
-				print(f"\tquery time: {ivf_pq_elapsed_time}")
-				print(f"\tposition: {ivf_pq_target_index}")
+				print(f"\tquery time: {ivf_pq_elapsed_time:.4f}s")
+				if category not in original_queries:
+					print(f"\tposition: {ivf_pq_target_index}")
+				print(f"\tTop 10 results:")
+				print(
+					json.dumps(
+						[result["category"] for result in ivf_pq_results[:10]],
+						indent=4
+					)
+				)
 				print("-" * 32)
 			
 			print("=" * 72)
