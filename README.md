@@ -366,11 +366,15 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - Quick Start [documentation](https://lancedb.github.io/lancedb/basic/)
      - Python API Reference [documentation](https://lancedb.github.io/lancedb/python/python/)
      - Filtering [documentation](https://lancedb.github.io/lancedb/sql/)
-     - Vector Search [documentation](https://lancedb.github.io/lancedb/search/)
      - Full Text Search [documentation](https://lancedb.github.io/lancedb/fts/)
      - Working with Tables [documentation](https://lancedb.github.io/lancedb/guides/tables/)
      - ANN Indexes [documentation](https://lancedb.github.io/lancedb/ann_indexes/)
          - Primarily for the section on disk-based indexes
+         - Vector Search [documentation](https://lancedb.github.io/lancedb/search/)
+         - Concepts:
+             - [Vector Search](https://lancedb.github.io/lancedb/concepts/vector_search/)
+             - [IVF-PQ](https://lancedb.github.io/lancedb/concepts/index_ivfpq/)
+             - [HNSW](https://lancedb.github.io/lancedb/concepts/index_hnsw/)
      - Storage [docoumentation](https://lancedb.github.io/lancedb/concepts/storage/)
          - Primarily for local disk storage
      - FAQs [documentation](https://lancedb.github.io/lancedb/faq/)

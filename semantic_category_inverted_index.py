@@ -1,7 +1,7 @@
 # semantic_category_inverted_index.py
 # Convert all categories from the document dump into semantic vectors
 # and use those vectors as part of an inverted index.
-# Python 3.9
+# Python 3.11
 # Windows/MacOS/Linux
 
 
@@ -21,7 +21,7 @@ from typing import Dict, List, Any
 import lancedb
 from lancedb.table import LanceTable
 import msgpack
-import networkx as nx
+from nltk.tokenize import word_tokenize
 import numpy as np
 import psutil
 import torch
@@ -29,6 +29,8 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
 
 from preprocess import load_model
+from preprocess import lowercase, handle_special_numbers, remove_punctuation
+from preprocess import remove_stopwords, replace_subscripts, replace_superscripts
 
 
 def load_data_from_msgpack(path: str) -> Dict:
@@ -192,7 +194,7 @@ def embed_all_unseen_categories(
 		generates the embeddings.
 	@param: device (str), what device to send the tokenizer and model 
 		to.
-	@param: table (lacedeb.table), the vector DB table that is being 
+	@param: table (LanceTable), the vector DB table that is being 
 		queried.
 	@param: categories (List[str]), the list of categories to check
 		against the entries in the vector DB table.
@@ -317,7 +319,7 @@ def search_table_for_categories(table: LanceTable, categories: List[str], chunk_
 	Search the categories in the vector DB table and isolate which 
 		categories in the arguments list are already found in the 
 		table.
-	@param: table (lacedeb.table), the vector DB table that is being 
+	@param: table (LanceTable), the vector DB table that is being 
 		queried.
 	@param: categories (List[str]), the list of categories to check
 		against the entries in the vector DB table.
@@ -367,10 +369,64 @@ def search_table_for_categories(table: LanceTable, categories: List[str], chunk_
 
 
 def get_index(target: str, results: List[Dict[str, Any]]) -> int:
+	'''
+	Get the index of the target category from the vector DB results.
+	@param: target (str), the target category.
+	@param: results (List[Dict[str, Any]]), the results list from the 
+		vector DB.
+	@return: Returns the index of the target category from the resutls 
+		list.
+	'''
+	# Iterate across every entry in the results list.
 	for idx, result in enumerate(results):
+		# Return the current index if the current category matches the 
+		# target.
 		if result["category"] == target:
 			return idx
+		
+	# Return -1 if target category was not found.
 	return -1
+
+
+def bow_preprocess(text: str, return_word_freq: bool = False):
+	'''
+	Process the raw text to bag of words.
+	@param: text (str), the raw text that is to be processed into a bag
+		of words.
+	@param: return_word_freq (bool), whether to return the frequency of
+		each word in the input text.
+	@return: returns a tuple (bag_of_words: List[str]) or 
+		(bag_of_words: List[str], freq: dict[str: int]) depending on the 
+		return_word_freq argument.
+	'''
+	# Perform the following text preprocessing in the following order:
+	# 1) lowercase
+	# 2) handle special (circle) numbers 
+	# 3) remove punctuation
+	# 4) remove stop words
+	# 5) remove superscripts/subscripts
+	text = lowercase(text)
+	text = handle_special_numbers(text)
+	text = remove_punctuation(text)
+	text = remove_stopwords(text)
+	text = replace_subscripts(text)
+	text = replace_superscripts(text)
+
+	# Isolate the set of unique words in the remaining processed text.
+	bag_of_words = list(set(word_tokenize(text)))
+	
+	# Return just the bag of words if return_word_freq is False.
+	if not return_word_freq:
+		return tuple([bag_of_words])
+	
+ 	# Record each word's frequency in the processed text.
+	word_freqs = dict()
+	words = word_tokenize(text)
+	for word in bag_of_words:
+		word_freqs[word] = words.count(word)
+
+	# Return the bag of words and the word frequencies.
+	return tuple([bag_of_words, word_freqs])
 
 
 def main():
@@ -828,25 +884,42 @@ def main():
 		# The number of options for k (the limit).
 		k_options = [50, 100, 250, 500, 1_000]
 
+		# Initialize list of queries.
+		target_categories = []
+
 		# Randomly sample categories.
-		target_categories = random.sample(all_categories, 5)
+		known_categories = random.sample(all_categories, 5)
+		target_categories += known_categories
+
+		# Generate some original queries that are not existing 
+		# categories.
 		original_queries = [
-			"Who ran the 1936 track and field games for America?",			# Jesse Owens
+			"Who ran the 1936 track and field Olympic games for America?",			# Jesse Owens
 			"What skyscraper in Dubai is the world's tallest structure?",	# Burj Khalifa
 			"Name the fighter jet used in the movie Top Gun",				# F-14A Tomcat
 			"What color are sapphires?",									# Blue/green/etc
-			"Given an example of a shonen manga",							# Bleach/Dragon Ball/etc
+			"Give an example of a shonen manga",							# Bleach/Dragon Ball/etc
 		]
+
+		# NOTE:
+		# Raw queries like "What color are sapphires?" perform poorly.
+		# Considering keyword extraction from raw queries and passing 
+		# those keywords over to the search. This will cast a wider net
+		# (per word) so limiting k may be a good idea given current 
+		# retrieval speeds are quite good.
+
+		# Combine all queries and generate the necessary embeddings.
 		target_categories += original_queries
 		target_category_embeddings = embed_text(
 			tokenizer, model, device, target_categories
 		)
 
-		# for category, embedding in zip(target_categories, target_category_embeddings):
+		# Iterate through the target categories and embeddings.
 		for idx, category in enumerate(target_categories):
 			print(f"Target: {category}")
 			embedding = target_category_embeddings[idx]
 
+			# Try each option for top-k results.
 			for k in k_options:
 				print(f"Top {k} results:")
 
@@ -865,6 +938,94 @@ def main():
 					.limit(k)\
 					.to_list()
 				ivf_pq_end = time.time()
+				ivf_pq_elapsed_time = ivf_pq_end - ivf_pq_start
+				ivf_pq_target_index = get_index(category, ivf_pq_results)
+
+				# Output results.
+				print(f"Flat index:")
+				print(f"\tquery time: {flat_elapsed_time:.4f}s")
+				if category not in original_queries:
+					print(f"\tposition: {flat_target_index}")
+				print(f"\tTop 10 results:")
+				print(
+					json.dumps(
+						[result["category"] for result in flat_results[:10]],
+						indent=4
+					)
+				)
+				print(f"IVF-PQ index:")
+				print(f"\tquery time: {ivf_pq_elapsed_time:.4f}s")
+				if category not in original_queries:
+					print(f"\tposition: {ivf_pq_target_index}")
+				print(f"\tTop 10 results:")
+				print(
+					json.dumps(
+						[result["category"] for result in ivf_pq_results[:10]],
+						indent=4
+					)
+				)
+				print("-" * 32)
+			
+			print("=" * 72)
+
+		# Iterate through the target categories and embeddings.
+		for idx, category in enumerate(target_categories):
+			print(f"Target: {category}")
+
+			# Break down text into keywords.
+			keywords = bow_preprocess(category) # rough BOW to get key words.
+			print(f"Target keywords: {', '.join(keywords)}")
+
+			# TODO:
+			# Extract keywords with alternative algorithsm and measure
+			# the success. Algorithms to investigate include rake, 
+			# yake, and textrank.
+
+			# Generate embeddings.
+			embeddings = embed_text(tokenizer, model, device, keywords)
+
+			# Try each option for top-k results.
+			for k in k_options:
+				print(f"Top {k} results:")
+
+				# Query flat index for top K results.
+				flat_start = time.time()
+				flat_results = []
+				results_list = []
+				for embedding in embeddings:
+					results_list.append(flat_index.search(embedding)\
+						.limit(k)\
+						.to_list()
+					)
+				flat_end = time.time()
+
+				# Round robin interspersing of results from each query.
+				max_len = max(len(results) for results in results_list)
+				for i in range(max_len):
+					for results in results_list:
+						if i < len(results):
+							flat_results.append(results[i])
+
+				flat_elapsed_time = flat_end - flat_start
+				flat_target_index = get_index(category, flat_results)
+				
+				# Query IVF-PQ index for top K results.
+				ivf_pq_start = time.time()
+				ivf_pq_results = []
+				results_list = []
+				results_list.append(ivf_pq_index.search(embedding)\
+					.limit(k)\
+					.to_list()
+				)
+				ivf_pq_end = time.time()
+
+				# Round robin interspersing of results from each query.
+				max_len = max(len(results) for results in results_list)
+				for i in range(max_len):
+					for results in results_list:
+						if i < len(results):
+							ivf_pq_results.append(results[i])
+
 				ivf_pq_elapsed_time = ivf_pq_end - ivf_pq_start
 				ivf_pq_target_index = get_index(category, ivf_pq_results)
 
