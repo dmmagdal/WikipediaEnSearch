@@ -1018,10 +1018,11 @@ def main():
 				ivf_pq_start = time.time()
 				ivf_pq_results = []
 				results_list = []
-				results_list.append(ivf_pq_index.search(embedding)\
-					.limit(k)\
-					.to_list()
-				)
+				for embedding in embeddings:
+					results_list.append(ivf_pq_index.search(embedding)\
+						.limit(k)\
+						.to_list()
+					)
 				ivf_pq_end = time.time()
 
 				# Round robin interspersing of results from each query.
