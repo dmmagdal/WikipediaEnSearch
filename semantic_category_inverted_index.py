@@ -698,9 +698,10 @@ def main():
 		(table, node_chunk, search_chunk_size) 
 		for node_chunk in category_node_chunks
 	]
+	num_cpus = min(mp.cpu_count(), args.num_proc)
 	
 	if args.num_proc > 1:
-		with mp.Pool(min(args.num_proc, mp.cpu_count())) as pool:
+		with mp.Pool(num_cpus) as pool:
 			results = pool.starmap(
 				search_table_for_categories, args_list
 			)
@@ -786,7 +787,6 @@ def main():
 
 	print("Embedding categories to vectors and storing to table:")
 	if args.num_proc > 1:
-		num_cpus = min(mp.cpu_count(), args.num_proc)
 		with mp.Pool(num_cpus) as pool:
 			for i in range(0, len(args_list), num_cpus):
 				print(f"processing chunks {i + 1} to {i + num_cpus}")
@@ -805,17 +805,22 @@ def main():
 				gc.collect()
 	else:
 		with ThreadPoolExecutor(max_workers=args.num_thread) as executor:
-			results = executor.map(
-				lambda args: embed_all_unseen_categories(*args), 
-				args_list
-			)
-		
-			for result in results:
-				table.add(
-					data=result, 
-					mode="append", 
-					on_bad_vectors="drop"
+			for i in range(0, len(args_list), args.num_thread):
+				print(f"processing chunks {i + 1} to {i + args.num_thread}")
+				results = executor.map(
+					lambda args: embed_all_unseen_categories(*args), 
+					args_list[i:i + args.num_thread]
 				)
+			
+				for result in results:
+					table.add(
+						data=result, 
+						mode="append", 
+						on_bad_vectors="drop"
+					)
+
+				del results
+				gc.collect()
 
 	# NOTE:
 	# On server, fewer processors/threads means longer runtime but 
