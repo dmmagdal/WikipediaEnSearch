@@ -66,6 +66,13 @@
                          - Incurs storage cost too.
                  - Scaling
                      - Will have to scale to all documents (roughly 26 to 40 million). That will incur a lot of time when computing similarity and ranking. No better than the results that were being returned from the blind inverted index (possibly worse).
+         - Directy category mapping with BERT similarity
+             - Similar to "Category traversal with BERT similarity" except no category tree is involved.
+             - Pros:
+                 - No category tree means more direct access to end categories
+                 - Let's the vector DB do all the work in one shot.
+             - Cons:
+                 - Does not work with raw text queries like "What color are sapphires?".
  - [Inverted Index: a simple yet powerful data structure](https://evanxg852000.github.io/tutorial/rust/data/structure/2020/04/09/inverted-index-simple-yet-powerful-ds.html)
      - Inverted index implemented in rust
 

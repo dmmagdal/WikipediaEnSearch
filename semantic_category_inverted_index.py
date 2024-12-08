@@ -15,12 +15,14 @@ import multiprocessing as mp
 import os
 import pyarrow as pa
 import random
+import re
 import time
 from typing import Dict, List, Any
 
 import lancedb
 from lancedb.table import LanceTable
 import msgpack
+from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 import numpy as np
 import psutil
@@ -422,6 +424,62 @@ def bow_preprocess(text: str, return_word_freq: bool = False):
  	# Record each word's frequency in the processed text.
 	word_freqs = dict()
 	words = word_tokenize(text)
+	for word in bag_of_words:
+		word_freqs[word] = words.count(word)
+
+	# Return the bag of words and the word frequencies.
+	return tuple([bag_of_words, word_freqs])
+
+
+def bow_chunk_on_stopwords(text: str, return_word_freq: bool = False):
+	'''
+	Process the raw text to bag of words.
+	@param: text (str), the raw text that is to be processed into a bag
+		of words.
+	@param: return_word_freq (bool), whether to return the frequency of
+		each word in the input text.
+	@return: returns a tuple (bag_of_words: List[str]) or 
+		(bag_of_words: List[str], freq: dict[str: int]) depending on the 
+		return_word_freq argument.
+	'''
+	# Perform the following text preprocessing in the following order:
+	# 1) lowercase
+	# 2) handle special (circle) numbers 
+	# 3) remove punctuation
+	# 4) remove stop words
+	# 5) remove superscripts/subscripts
+	text = lowercase(text)
+	text = handle_special_numbers(text)
+	text = remove_punctuation(text)
+	# text = remove_stopwords(text)
+	text = replace_subscripts(text)
+	text = replace_superscripts(text)
+
+	# Initialize stopwords set and regex pattern to filter out those
+	# stop words.
+	stop_words = set(stopwords.words("english"))
+	pattern = r'\b(' + '|'.join(re.escape(word) for word in stop_words) + r')\b'
+	
+	# Apply the regex to remove the stopwords from the text. Filter out
+	# any empty strings or stop words from the result.
+	text_split = re.split(pattern, text)
+	text_split = [
+		segment.strip() 
+		for segment in text_split 
+		if segment.strip() and segment.lower() not in stop_words
+	]
+	bag_of_words = list(set(text_split))
+
+	# Isolate the set of unique words in the remaining processed text.
+	# bag_of_words = list(set(word_tokenize(text)))
+	
+	# Return just the bag of words if return_word_freq is False.
+	if not return_word_freq:
+		return tuple([bag_of_words])
+	
+ 	# Record each word's frequency in the processed text.
+	word_freqs = dict()
+	words = word_tokenize(remove_stopwords(text))
 	for word in bag_of_words:
 		word_freqs[word] = words.count(word)
 
@@ -978,7 +1036,8 @@ def main():
 			print(f"Target: {category}")
 
 			# Break down text into keywords.
-			keywords = bow_preprocess(category) # rough BOW to get key words.
+			# keywords = bow_preprocess(category) # rough BOW to get key words.
+			keywords = bow_preprocess(category) # rough key word extraction with BOW to get key phrases.
 			print(f"Target keywords: {', '.join(keywords)}")
 
 			# TODO:
