@@ -1031,12 +1031,19 @@ def main():
 			
 			print("=" * 72)
 
+		# NOTE:
+		# Basic keyword extraction (via the same bag-of-words methods 
+		# used for my TF-IDF/BM25) did yield better outputs but there 
+		# are visible areas where this could be improved by using
+		# multiple words as keywords instead of single words (ie "color 
+		# sapphires" vs "color", "sapphires").
+
 		# Iterate through the target categories and embeddings.
 		for idx, category in enumerate(target_categories):
 			print(f"Target: {category}")
 
 			# Break down text into keywords.
-			# keywords = bow_preprocess(category) # rough BOW to get key words.
+			# keywords = bow_preprocess(category)[0] # rough BOW to get key words.
 			keywords = bow_preprocess(category) # rough key word extraction with BOW to get key phrases.
 			print(f"Target keywords: {', '.join(keywords)}")
 
