@@ -30,6 +30,11 @@ import torch
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
 
+from rake_nltk import Rake
+from yake import KeywordExtractor
+import spacy
+import pytextrank
+
 from preprocess import load_model
 from preprocess import lowercase, handle_special_numbers, remove_punctuation
 from preprocess import remove_stopwords, replace_subscripts, replace_superscripts
@@ -485,6 +490,31 @@ def bow_chunk_on_stopwords(text: str, return_word_freq: bool = False):
 
 	# Return the bag of words and the word frequencies.
 	return tuple([bag_of_words, word_freqs])
+
+
+def rake_keyword_extraction(text: str):
+	rake = Rake()
+	rake.extract_keywords_from_text(text)
+	keywords = rake.get_ranked_phrases()
+	return keywords
+
+
+def yake_keyword_extraction(text: str):
+	kw_extractor = KeywordExtractor()
+	keywords = kw_extractor.extract_keywords(text)
+	keywords = [kw[0] for kw in keywords]
+	return keywords
+
+
+def textrank_keyword_extraction(text: str):
+	# load a spaCy model, depending on language, scale, etc.
+	nlp = spacy.load("en_core_web_sm")
+
+	# add PyTextRank to the spaCy pipeline
+	nlp.add_pipe("textrank")
+	doc = nlp(text)
+	keywords = [phrase for phrase in doc._.phrases]
+	return keywords
 
 
 def main():
@@ -1046,13 +1076,29 @@ def main():
 		# matching categories. It may prove to be better overall to use
 		# an ensemble of methods.
 
+		# NOTE:
+		# Keyword/keyphrase extraction via rake-nltk gave similar
+		# outputs and performance to the key phrase extraction above.
+
+		# NOTE:
+		# Keyword/keyphrase extraction via yake gave better outputs for
+		# unseen, raw text queries. Still struggles the same on known
+		# exact-matching categories as above.
+
+		# NOTE:
+		# keyword/keyphrase extraction via scipy and pytextrank was not
+		# able to work out of the box.
+
 		# Iterate through the target categories and embeddings.
 		for idx, category in enumerate(target_categories):
 			print(f"Target: {category}")
 
 			# Break down text into keywords.
-			# keywords = bow_preprocess(category)[0] # rough BOW to get key words.
-			keywords = bow_chunk_on_stopwords(category)[0] # rough key word extraction with BOW to get key phrases.
+			keywords = bow_preprocess(category)[0] # rough BOW to get key words.
+			# keywords = bow_chunk_on_stopwords(category)[0] # rough key word extraction with BOW to get key phrases.
+			# keywords = rake_keyword_extraction(category)
+			# keywords = yake_keyword_extraction(category)
+			# keywords = textrank_keyword_extraction(category)
 			print(f"Target keywords: {', '.join(keywords)}")
 
 			# TODO:
