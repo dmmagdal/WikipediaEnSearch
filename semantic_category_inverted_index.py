@@ -1038,13 +1038,21 @@ def main():
 		# multiple words as keywords instead of single words (ie "color 
 		# sapphires" vs "color", "sapphires").
 
+		# NOTE:
+		# Basic key phrase extraction (via the same bag-of-words methods
+		# used for my TF-IDF/BM25) did yield even better outputs 
+		# compared to previous basic key word extraction on unseen, raw
+		# text queries. However, performance suffered for known exact-
+		# matching categories. It may prove to be better overall to use
+		# an ensemble of methods.
+
 		# Iterate through the target categories and embeddings.
 		for idx, category in enumerate(target_categories):
 			print(f"Target: {category}")
 
 			# Break down text into keywords.
 			# keywords = bow_preprocess(category)[0] # rough BOW to get key words.
-			keywords = bow_preprocess(category) # rough key word extraction with BOW to get key phrases.
+			keywords = bow_chunk_on_stopwords(category)[0] # rough key word extraction with BOW to get key phrases.
 			print(f"Target keywords: {', '.join(keywords)}")
 
 			# TODO:
