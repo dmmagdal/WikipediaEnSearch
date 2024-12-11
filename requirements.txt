@@ -1,6 +1,5 @@
 accelerate==0.30.1
 beautifulsoup4==4.12.1
-faiss-cpu==1.7.3
 lancedb==0.16.0
 lxml==4.9.1
 matplotlib==3.9.2
@@ -9,6 +8,7 @@ msgpack==1.0.0
 networkx==3.3
 nltk==3.8
 num2words==0.5.12
+polars==1.17.1
 psutil==5.9.8
 pyarrow==15.0.0
 requests==2.31.0
