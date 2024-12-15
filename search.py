@@ -7,6 +7,7 @@
 
 import concurrent.futures
 import copy
+import cProfile
 import gc
 import hashlib
 import heapq
@@ -23,6 +24,8 @@ from bs4.element import Tag, NavigableString
 import lancedb
 import msgpack
 import numpy as np
+import pandas as pd
+import polars as pl
 import pyarrow as pa
 import torch
 from tqdm import tqdm
@@ -30,6 +33,8 @@ from tqdm import tqdm
 from preprocess import load_model, process_page
 from preprocess import bow_preprocessing, vector_preprocessing
 from generate_trie import load_trie
+
+profiler = cProfile.Profile()
 
 
 def hashSum(data: str) -> str:
@@ -166,6 +171,24 @@ def load_data_file(path: str, use_json: bool = False) -> Dict:
 	if use_json:
 		return load_data_from_json(path)
 	return load_data_from_msgpack(path)
+
+
+def create_aligned_tfidf_vector(group: pd.DataFrame | Dict[str, float], words: List[str]):
+	'''
+	Create a TF-IDF vector that aligns with the input words list.
+	@param: group (), the grouped dataframe entries containing the 
+		TF-IDF data for each word in the group (document).
+	@param: words (List[str]), the input list of words.
+	@return: returns the aligned TF-IDF vector as a List[float].
+	'''
+	if isinstance(group, pd.DataFrame):
+		# Create a dictionary for quick lookup.
+		tfidf_dict = dict(zip(group["word"], group["tf-idf"]))
+	else:
+		tfidf_dict = group
+
+	# Align values with the order in 'words'.
+	return [tfidf_dict.get(word, 0.0) for word in words]
 
 
 def cosine_similarity(vec1: List[float], vec2: List[float]):
@@ -722,21 +745,24 @@ class BagOfWords:
 		return doc_word_tf
 	
 
-	def compute_idf(self, words: List[str]) -> List[float]:
+	def compute_idf(self, words: List[str], return_dict: bool = False) -> List[float] | Dict[str, float]:
 		'''
 		Retrieve the precomputed Inverse Document Frquency of the given
 		 	set of (usually query) words.
 		@param: words (List[str]), the (ordered) list of all (unique) 
 			terms to compute the Inverse Document Frequency for.
+		@param: return_dict (bool), whether to retunr the precomputed 
+			IDF as an ordered list or dictionary. Default is False.
 		@param: returns the Inverse Document Frequency for all words
 			queried in the corpus. The data is returned in an ordered
 			list (List[float]) where the index of each value
 			corresponds to the index of a word in the word list 
-			argument.
+			argument OR a dictionary (Dict[str, float]).
 		'''
 		# Initialize a list containing the mappings of the query words
 		# to the IDF.
 		idf_vector = [0.0] * len(words)
+		idf_dict = dict()
 
 		# Iterate through each file.
 		for file in self.idf_files:
@@ -749,9 +775,10 @@ class BagOfWords:
 				word = words[word_idx]
 				if word in word_to_idf:
 					idf_vector[word_idx] = word_to_idf[word]
+					idf_dict[word] = word_to_idf[word]
 
 		# Return the inverse document frequency vector.
-		return idf_vector
+		return idf_vector if not return_dict else idf_dict
 
 
 class TF_IDF(BagOfWords):
@@ -880,7 +907,7 @@ class TF_IDF(BagOfWords):
 		return sorted_rankings
 	
 
-	def file_search(self, doc_to_word_files, words, word_freq, word_idfs, max_results):
+	def file_search(self, doc_to_word_files: List[str], words: List[str], word_freq: Dict[str, int], word_idfs: Dict[str, float], max_results: int):
 		basenames = [
 			os.path.basename(file).replace(self.extension, "") 
 			for file in doc_to_word_files
@@ -896,188 +923,79 @@ class TF_IDF(BagOfWords):
 		stack_heap = list()
 		heapq.heapify(stack_heap)
 
-		for trie_path in trie_paths:
-			basename = os.path.basename(trie_path)
+		# Query TF-IDF.
+		query_tfidf = {
+			word: word_freq[word] * word_idfs[idx]
+			for idx, word in enumerate(words)
+		}
+		query_tfidf_vector = create_aligned_tfidf_vector(
+			query_tfidf, words
+		)
 
-			###########################################################
-			# Inverted Index Search
-			###########################################################
+		for file in doc_to_word_files:
+			profiler.enable()
 
-			# Initialize the set of documents that will be returned. 
-			# Each item in the list will be a unique string.
-			local_documents = set()
+			# Read in the doc_to_words data into a dataframe.
+			file = file.replace(".msgpack", ".parquet")
+			df_doc2words = pd.read_parquet(file)
 
-			# Isolate document mapping files.
-			local_int_to_doc_path = os.path.join(
-				trie_path, f"int_to_doc{self.extension}"
+			# Filter out all entries that are marked as part of the 
+			# redirect pages list.
+			df_doc2words = df_doc2words[~df_doc2words["doc"].isin(self.redirect_files)]
+
+			# Filter out all entries without the words from the input 
+			# list.
+			df_doc2words = df_doc2words[df_doc2words["word"].isin(words)]
+
+			# Compute the TF-IDF for every document, word.
+			df_doc2words["tf-idf"] = df_doc2words.apply(
+				# lambda row: row["freq"] * word_idfs[row["word"]], axis=1
+				lambda row: row["freq"] * word_idfs[words.index(row["word"])], axis=1
 			)
-			int_to_doc = load_data_file(
-				local_int_to_doc_path, self.use_json
-			)
 
-			# Convert key back to int for document id to documents map.
-			int_to_doc = {
-				int(key): value for key, value in int_to_doc.items()
-			}
-
-			# Initialize a dictionary to group words together by their
-			# first character.
-			char_word_dict = dict()
-
-			# Iterate through each word in the query words list.
-			for word in words:
-				# Isolate the first character in the word.
-				word_char = word[0]
-
-				# Reset the char variable if it is not an alphanumeric.
-				if word_char not in self.alpha_numerics:
-					word_char = "other"
-
-				# Verify that the word is within the set word length limit.
-				# Will skip the word otherwise.
-				if len(word) <= self.word_len_limit:
-					# Store the word to the character to word dictionary.
-					if word_char in list(char_word_dict.keys()):
-						char_word_dict[word_char].append(word)
-					else:
-						char_word_dict[word_char] = [word]
-
-			# Iterate through the characters in the character to word
-			# dictionary.
-			for char in sorted(list(char_word_dict.keys())):
-				# Reset the char variable if it is not an alphanumeric.
-				if char not in self.alpha_numerics:
-					char = "other"
-
-				# Unpack the words in the character to words dictionary.
-				char_words = char_word_dict[char]
-
-				# Identify the trie for this character.
-				trie_file = os.path.join(
-					trie_path, f"{char}_trie_slim{self.extension}"
-				)
-				assert os.path.exists(trie_file), f"Trie file {trie_file} was expected but not found."
-
-				# Load the trie.
-				# start = time.perf_counter()
-				trie = load_trie(trie_file, self.use_json)
-				# end = time.perf_counter()
-				# print(f"Time to load shard: {(end - start):.6f} seconds")
-
-				# Iterate through each word. Update the documents set
-				# if the results returned from the trie are valid (not
-				# None).
-				for word in char_words:
-					results = trie.search(word)
-					if results is not None:
-						local_documents.update([
-							int_to_doc[result] for result in results
-						])
-	
-				# Memory cleanup.
-				del trie
-				gc.collect()
-
-			# Convert the documents set to a list.
-			local_documents = list(local_documents)
-
-			###########################################################
-			# TF-IDF Ranking
-			###########################################################
-
-			# Compute the TF-IDF for the file.
-			# file_tfidf = self.compute_tfidf(
-			# 	words, word_freq, word_idf, 
-			# 	local_documents, max_results=max_results
+			# Group tf-idf values by document to get a document level
+			# tf-idf vector.
+			# doc_vectors = df_doc2words.groupby("doc")\
+			# 	.apply(
+			# 		lambda group: dict(zip(group["word"], group["tf-idf"]))\
+			# 	)
+			doc_vectors = df_doc2words.groupby("doc")\
+				.apply(lambda group: create_aligned_tfidf_vector(group, words))
+			
+			# Compute the document cosine similarity.
+			# doc_vectors["cosine similarity"] = doc_vectors.apply(
+			# 	lambda vec: cosine_similarity(vec, query_tfidf_vector)
 			# )
-
-			# Compute query TF-IDF.
-			query_total_word_count = sum(
-				[value for value in word_freq.values()]
-			)
-			query_tfidf = [0.0] * len(words)
-			for word_idx in range(len(words)):
-				word = words[word_idx]
-				query_word_tf = word_freq[word] / query_total_word_count
-				query_tfidf[word_idx] = query_word_tf * word_idfs[word_idx]
-
-			# Load doc to word frequency mappings for the file.
-			doc_to_words = load_data_file(
-				os.path.join(self.doc_to_word_folder, 
-				f"{basename}{self.extension}"),
-				self.use_json
+			results = doc_vectors.reset_index(name="tfidf_vector")
+			results["cosine_similarity"] = results["tfidf_vector"].apply(
+				lambda vec: cosine_similarity(vec, query_tfidf_vector)
 			)
 
-			# Iterate through all documents returned by the inverted 
-			# index.
-			for doc in local_documents:
-				# Extract the document word frequencies.
-				word_freq_map = doc_to_words[doc]
+			# Grab the top n results and store it to a heap.
+			top_n = results.nlargest(max_results, "cosine_similarity")
+			top_n_list = []
+			for _, row in top_n.iterrows():
+				top_n_list.append((-row["cosine_similarity"], row["doc"]))
 
-				# Compute the document's term frequency for each word.
-				doc_word_tf = self.compute_tf(word_freq_map, words)
-
-				# Compute document TF-IDF.
-				doc_tfidf = [
-					tf * idf 
-					for tf, idf in list(zip(doc_word_tf, word_idfs))
-				]
-
-				# Compute cosine similarity against query TF-IDF and
-				# the document TF-IDF.
-				doc_cos_score = cosine_similarity(
-					query_tfidf, doc_tfidf
-				)
-
-				# If the sparse retrieval threshold has been 
-				# initialized, verify the document cosine similarity
-				# score is within that threshold. Do not append
-				# documents to the results list if they fall under the
-				# threshold.
-				if self.srt > 0.0 and doc_cos_score > self.srt:
-					continue
-
-				# NOTE:
-				# Cosine simularity range is [-1, 1] with -1 being
-				# inversely related and 1 being directly related (and 0
-				# for orthogonal or no relation). By multiplying the 
-				# score by -1 AFTER its computation, we get the most 
-				# relevant "higher" in the queue (heap).
-				# source: https://stats.stackexchange.com/questions/
-				# 	198810/interpreting-negative-cosine-similarity
-				# source: https://builtin.com/machine-learning/
-				# 	 cosine-similarity
-
-				# Multiply score by -1 to get inverse score. This is
-				# important since we are relying on a max heap.
-				doc_cos_score *= -1
-				
+			for doc_cos_score, doc in top_n_list:
 				# Insert the document name (includes file path & 
 				# article SHA1), TF-IDF vector, and cosine similarity 
 				# score (against the query TF-IDF vector) to the heapq.
 				# The heapq sorts by the first value in the tuple so 
 				# that is why the cosine similarity score is the first
 				# item in the tuple.
-				# if max_results != -1 and len(file_tfidf_heap) >= max_results:
 				if max_results != -1 and len(stack_heap) >= max_results:
 					# Pushpop the highest (cosine similarity) value
 					# tuple from the heap to make way for the next
 					# tuple.
-					heapq.heappushpop(
-						stack_heap,
-						# file_tfidf_heap,
-						# tuple([doc_cos_score, doc, doc_tfidf])
-						# [doc_cos_score, doc, doc_tfidf]
-						[doc_cos_score, doc]
-					)
+					heapq.heappushpop(stack_heap, [doc_cos_score, doc])
 				else:
-					heapq.heappush(
-						stack_heap,
-						# file_tfidf_heap,
-						# tuple([doc_cos_score, doc, doc_tfidf]) # Tuple doesnt support modification
-						# [doc_cos_score, doc, doc_tfidf] # Results in issues unpacking list in preint_results()
-						[doc_cos_score, doc]
-					)
+					# Push the highest (cosine similarity) value tuple 
+					# from the heap to make way for the next tuple.
+					heapq.heappush(stack_heap, [doc_cos_score, doc])
+
+			profiler.disable()
+			profiler.print_stats(sort="time")
 
 		print(f"thread stack heap length: {len(stack_heap)}")
 		return stack_heap
