@@ -186,11 +186,22 @@ def compute_idf(
 	word_count = dict()
 	for word_to_doc_file in tqdm(word_to_doc_files, "Aggregating word counts"):
 		word_to_docs = load_data_file(word_to_doc_file, use_json=use_json)
+
+		# Perform set operations to identify words not yet found. 
+		# Update the word count dictionary to contain a value of 0 for
+		# all those "new" unseen words. This will mean that every word
+		# is already initialize when it comes time to iterate through 
+		# the word to doc dictionary.
+		missing_words = set(word_to_docs.keys())\
+			.difference(set(word_count.keys()))
+		word_count.update({word: 0 for word in missing_words})
+
 		for word in list(word_to_docs.keys()):
-			if word not in list(word_count.keys()):
-				word_count[word] = word_to_docs[word]
-			else:
-				word_count[word] += word_to_docs[word]
+			word_count[word] += word_to_docs[word]
+			# if word not in list(word_count.keys()):
+			# 	word_count[word] = word_to_docs[word]
+			# else:
+			# 	word_count[word] += word_to_docs[word]
 
 	# Compute the inverse documemnt frequency for all words.
 	word_idf = dict()
@@ -217,10 +228,15 @@ def compute_sparse_vectors(
 
 		for word, tf in word_freq.items():
 			# Compute the TF-IDF.
-			tf_idf = tf * idf_df[word]
+			word_idf = idf_df.loc[
+				idf_df["word"] == word, "idf"
+			].iloc[0]
+			# tf_idf = tf * idf_df[word]
+			tf_idf = tf * word_idf
 
 			# Compute the BM25.
-			numerator = idf_df[word] * tf * (k1 + 1)
+			# numerator = idf_df[word] * tf * (k1 + 1)
+			numerator = word_idf * tf * (k1 + 1)
 			denominator = tf + k1 * (
 				1 - b + b * (doc_len / avg_doc_len)
 			)
@@ -539,6 +555,13 @@ def main():
 	# Path to output parquet.
 	idf_path = os.path.join(idf_staging, "idf.parquet")
 
+	# Load necessary corpus metadata (primarily want the corpus size
+	# for this part).
+	with open(corpus_path, "r") as f:
+		corpus_data = json.load(f)
+		corpus_size = corpus_data["corpus_size"]
+		avg_doc_len = corpus_data["avg_doc_len"]
+
 	# Perform processing if the end parquet file is not available.
 	if not os.path.exists(idf_path):
 		idf = compute_idf(word_to_docs_files, corpus_size, use_json)
@@ -591,8 +614,14 @@ def main():
 		)
 
 		# Skipif the output parquet exists.
-		if os.path.exists:
+		if os.path.exists(output_file):
 			continue
+
+		# NOTE:
+		# 16 processors was going to OOM on the first file. Would 
+		# highly recommend using just 1 processor/thread here. It's
+		# going to take a long time it's depending all upon the 
+		# resources available.
 
 		# Initialize a list object to hold the flattened data 
 		# output.
@@ -637,14 +666,14 @@ def main():
 		if num_proc > 1:
 			with mp.Pool(max_workers) as pool:
 				results = pool.starmap(
-					get_document_lengths, args_list
+					compute_sparse_vectors, args_list
 				)
 				for result in results:
 					vector_data += result
 		else:
 			with ThreadPoolExecutor(max_workers) as executor:
 				results = executor.map(
-					lambda args: get_document_lengths(*args),
+					lambda args: compute_sparse_vectors(*args),
 					args_list
 				)
 				for result in results:
