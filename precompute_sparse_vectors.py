@@ -63,6 +63,50 @@ def load_data_file(path: str, use_json: bool = False) -> Dict:
 	return load_data_from_msgpack(path)
 
 
+def write_data_to_msgpack(path: str, data: Dict) -> None:
+	'''
+	Write data (dictionary) to a msgpack file given the path.
+	@param: path (str), the path of the data file that is to be 
+		written/created.
+	@param: data (Dict), the structured data (dictionary) that is to be
+		written to the file.
+	@return: returns nothing.
+	'''
+	with open(path, 'wb+') as f:
+		packed = msgpack.packb(data)
+		f.write(packed)
+
+
+def write_data_to_json(path: str, data: Dict) -> None:
+	'''
+	Write data (dictionary) to a json file given the path.
+	@param: path (str), the path of the data file that is to be 
+		written/created.
+	@param: data (Dict), the structured data (dictionary) that is to be
+		written to the file.
+	@return: returns nothing.
+	'''
+	with open(path, "w+") as f:
+		json.dump(data, f, indent=4)
+
+
+def write_data_file(path: str, data: Dict, use_json: bool = False) -> None:
+	'''
+	Write data (dictionary) to either a JSON or msgpack file given the
+		path.
+	@param: path (str), the path of the data file that is to be loaded.
+	@param: data (Dict), the structured data (dictionary) that is to be
+		written to the file.
+	@param: use_json (bool), whether to write the data file to a JSON 
+		or msgpack (default is False).
+	@return: returns nothing.
+	'''
+	if use_json:
+		write_data_to_json(path, data)
+	else:
+		write_data_to_msgpack(path, data)
+
+
 def clear_folder(folder_path: str) -> None:
 	'''
 	Clear the contents of the given folder.
@@ -244,6 +288,7 @@ def compute_sparse_vectors(
 			word_idf = idf_df.loc[
 				idf_df["word"] == word, "idf"
 			].iloc[0]
+			# word_idf = idf_df[word]
 			# tf_idf = tf * idf_df[word]
 			tf_idf = tf * word_idf
 
@@ -593,6 +638,8 @@ def main():
 
 		# Save to Parquet file (store in staging).
 		pq.write_table(table, idf_path)
+
+		# write_data_file(idf_path.replace(".parquet", ".msgpack"), idf)
 
 	# Store in staging.
 	print("All Inverse Document Frequencies have been computed.")

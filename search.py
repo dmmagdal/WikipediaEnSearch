@@ -845,8 +845,8 @@ class TF_IDF(BagOfWords):
 		# Snippet. Polars does not play well with multithreading from
 		# python because it is already multithreading under the hood in
 		# rust.
-		corpus_tfidf = self.file_search(*args_list[0])
-		exit()
+		# corpus_tfidf = self.file_search(*args_list[0])
+		# exit()
 		
 		# Use with Pandas/all other software.
 		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
