@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use indicatif::ProgressBar;
 
 
+
 fn filter_category_map_documents(
     cat_to_doc: &mut HashMap<String, Vec<String>>, 
     missed_docs: &HashSet<String>, 
@@ -612,6 +613,10 @@ fn set_difference(a: HashSet<String>, b: HashSet<String>) -> Vec<String> {//Py<P
     // });
     b.difference(&a).cloned().collect()
 }
+
+// NOTE:
+// Cannot call polars in pyo3 without pyo3-polars crate. Even then, 
+// loading in dataframes from the extension is not supported.
 
 
 /// A Python module implemented in Rust.

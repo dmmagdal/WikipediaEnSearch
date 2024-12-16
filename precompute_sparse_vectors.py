@@ -168,7 +168,7 @@ def get_document_lengths(doc_to_words: Dict[str, Dict[str, int]]) -> List[int]:
 
 def compute_idf(
 	word_to_doc_files: List[str], corpus_size: int, use_json: bool = False
-) -> None:
+) -> Dict[str, float]:
 	'''
 	Compute the inverse document frequency for every word in the 
 		corpus.

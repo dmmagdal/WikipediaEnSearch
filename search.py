@@ -841,6 +841,14 @@ class TF_IDF(BagOfWords):
 			for file_chunk in file_chunks
 		]
 		corpus_tfidf = []
+
+		# Snippet. Polars does not play well with multithreading from
+		# python because it is already multithreading under the hood in
+		# rust.
+		corpus_tfidf = self.file_search(*args_list[0])
+		exit()
+		
+		# Use with Pandas/all other software.
 		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
 			print("Starting multithreaded processing")
 			results = executor.map(lambda args: self.file_search(*args), args_list)
@@ -935,7 +943,46 @@ class TF_IDF(BagOfWords):
 		for file in doc_to_word_files:
 			profiler.enable()
 
-			# Read in the doc_to_words data into a dataframe.
+			###########################################################
+			# POLARS
+			###########################################################
+			# # Read in the doc_to_words data into a dataframe.
+			# file = file.replace(".msgpack", ".parquet")
+			# df_doc2words = pl.read_parquet(file)
+
+			# # Filter out all entries that are marked as part of the redirect pages list.
+			# df_doc2words = df_doc2words.filter(~df_doc2words["doc"].is_in(self.redirect_files))
+
+			# # Filter out all entries without the words from the input list.
+			# df_doc2words = df_doc2words.filter(df_doc2words["word"].is_in(words))
+
+			# # Compute the TF-IDF for every document, word.
+			# # Polars doesn't have an `apply` method that works with the same syntax as pandas, so we use `apply` with a lambda
+			# df_doc2words = df_doc2words.with_columns(
+			# 	pl.col("freq") * pl.lit([word_idfs[words.index(word)] for word in df_doc2words["word"]]).alias("tf-idf")
+			# )
+
+			# # Group tf-idf values by document to get a document-level tf-idf vector.
+			# # We assume `create_aligned_tfidf_vector` returns a list, which can be stored as a column in Polars.
+			# doc_vectors = df_doc2words.groupby("doc").agg(
+			# 	pl.col("word").apply(lambda group: create_aligned_tfidf_vector(group, words), return_dtype=pl.List(pl.Float64)).alias("tfidf_vector")
+			# )
+
+			# # Compute the document cosine similarity.
+			# doc_vectors = doc_vectors.with_columns(
+			# 	pl.col("tfidf_vector").apply(lambda vec: cosine_similarity(vec, query_tfidf_vector)).alias("cosine_similarity")
+			# )
+
+			# # Grab the top n results and store it to a heap.
+			# top_n = doc_vectors.sort("cosine_similarity", reverse=True).head(max_results)
+			# top_n_list = []
+			# for row in top_n.iter_rows():
+			# 	top_n_list.append((-row["cosine_similarity"], row["doc"]))
+
+			###########################################################
+			# PANDAS
+			###########################################################
+			# # Read in the doc_to_words data into a dataframe.
 			file = file.replace(".msgpack", ".parquet")
 			df_doc2words = pd.read_parquet(file)
 
