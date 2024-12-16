@@ -17,7 +17,6 @@ import shutil
 from typing import Dict, List, Tuple
 
 from bs4 import BeautifulSoup
-from bs4 import NavigableString, Tag
 import msgpack
 from tqdm import tqdm
 import pandas as pd
@@ -219,7 +218,21 @@ def compute_sparse_vectors(
 	b: float,
 	avg_doc_len: float,
 ) -> List[Tuple[str, str, int, float, float]]:
-	
+	'''
+	Compute the sparse vector values TF-IDF and BM25 for each document,
+		word pair.
+	@param: doc_to_words (Dict[str, Dict[str, int]]), the word 
+		frequencies for each document in a file.
+	@param: idf_df (pd.DataFrame), dataframe containing the word to 
+		inverse document frequency mapping for all words in the corpus.
+	@param: k1 (float), a hyperparamter necessary for computing BM25.
+	@param: b (float), a hyperparamter necessary for computing BM25.
+	@param: avg_doc_len (float), the average length of all documents in
+		the corpus, needed for computing BM25.
+	@return: Returns a list of tuples containing the document, word,
+		document level word frequency, document level TF-IDF, and the 
+		document level word BM25 score.
+	'''
 	# Initialize list to store all tuple data.
 	vector_data = list()
 
