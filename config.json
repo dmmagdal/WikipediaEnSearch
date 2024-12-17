@@ -39,7 +39,7 @@
         "redirect_cache_path": "./metadata/bag_of_words/redirect_cache",
         "category_cache_path": "./metadata/bag_of_words/category_cache",
         "vector_metadata_path": "./metadata/vector",
-        "staging_idf_path": "./metdata/bag_of_words/staging/idf_cache",
+        "staging_idf_path": "./metadata/bag_of_words/staging/idf_cache",
         "staging_corpus_path": "./metadata/bag_of_words/staging/corpus_cache",
         "staging_redirect_path": "./metadata/bag_of_words/staging/redirect_cache",
         "sparse_vector_path": "./metadata/bag_of_words/sparse_vectors"

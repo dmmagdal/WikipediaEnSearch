@@ -280,33 +280,73 @@ def compute_sparse_vectors(
 	# Initialize list to store all tuple data.
 	vector_data = list()
 
-	for doc, word_freq in tqdm(doc_to_words.items()):
-		doc_len = sum([value for value in word_freq.values()])
+	# for doc, word_freq in tqdm(doc_to_words.items()):
+	# 	doc_len = sum([value for value in word_freq.values()])
 
-		for word, tf in word_freq.items():
-			# Compute the TF-IDF.
-			word_idf = idf_df.loc[
-				idf_df["word"] == word, "idf"
-			].iloc[0]
-			# word_idf = idf_df[word]
-			# tf_idf = tf * idf_df[word]
-			tf_idf = tf * word_idf
+	# 	for word, tf in word_freq.items():
+	# 		# Compute the TF-IDF.
+	# 		word_idf = idf_df.loc[
+	# 			idf_df["word"] == word, "idf"
+	# 		].iloc[0]
+	# 		# word_idf = idf_df[word]
+	# 		# tf_idf = tf * idf_df[word]
+	# 		tf_idf = tf * word_idf
 
-			# Compute the BM25.
-			# numerator = idf_df[word] * tf * (k1 + 1)
-			numerator = word_idf * tf * (k1 + 1)
-			denominator = tf + k1 * (
-				1 - b + b * (doc_len / avg_doc_len)
+	# 		# Compute the BM25.
+	# 		# numerator = idf_df[word] * tf * (k1 + 1)
+	# 		numerator = word_idf * tf * (k1 + 1)
+	# 		denominator = tf + k1 * (
+	# 			1 - b + b * (doc_len / avg_doc_len)
+	# 		)
+	# 		bm25 = numerator / denominator
+
+	# 		# Update return list with data.
+	# 		vector_data.append(
+	# 			(doc, word, tf, tf_idf, bm25)
+	# 		)
+
+	# Vectorized with pandas.
+	# Flatten doc to words
+	data = [
+		{"doc": doc, "word": word, "tf": tf}
+		for doc, word_freq in doc_to_words.items()
+		for word, tf in word_freq.items()
+	]
+	doc_word_df = pd.DataFrame(data)
+
+	# Compute document lengths and merge.
+	doc_lengths = (
+		doc_word_df.groupby("doc")["tf"]
+		.sum()
+		.rename("doc_len")
+		.reset_index()
+	)
+	doc_word_df = doc_word_df.merge(
+		doc_lengths, on="doc", how="left"
+	)
+
+	# Merge with `idf_df` to include the `idf` values
+	doc_word_df = doc_word_df.merge(
+		idf_df, on="word", how="left"
+	)
+
+	# Compute `TF-IDF` and `BM25` scores
+	doc_word_df["tf_idf"] = doc_word_df["tf"] * doc_word_df["idf"]
+	doc_word_df["bm25"] = (
+		doc_word_df["idf"]
+		* doc_word_df["tf"]
+		* (k1 + 1)
+		/ (
+			doc_word_df["tf"]
+			+ k1 * (
+				1 - b + b * (doc_word_df["doc_len"] / avg_doc_len)
 			)
-			bm25 = numerator / denominator
-
-			# Update return list with data.
-			vector_data.append(
-				(doc, word, tf, tf_idf, bm25)
-			)
+		)
+	)
 
 	# Return list of tuples.
-	return vector_data
+	# return vector_data
+	return doc_word_df
 
 
 def main():
@@ -639,8 +679,6 @@ def main():
 		# Save to Parquet file (store in staging).
 		pq.write_table(table, idf_path)
 
-		# write_data_file(idf_path.replace(".parquet", ".msgpack"), idf)
-
 	# Store in staging.
 	print("All Inverse Document Frequencies have been computed.")
 	print(f"Results stored to {idf_path}") 
@@ -681,11 +719,12 @@ def main():
 		# 16 processors was going to OOM on the first file. Would 
 		# highly recommend using just 1 processor/thread here. It's
 		# going to take a long time it's depending all upon the 
-		# resources available.
+		# resources available. 4 processors/threads is advised for a 
+		# 64GB system.
 
 		# Initialize a list object to hold the flattened data 
 		# output.
-		vector_data = list()
+		# vector_data = list()
 
 		# Load the doc to words map.
 		doc_to_words = load_data_file(file, use_json)
@@ -723,13 +762,17 @@ def main():
 		]
 			
 		# Calculate each document/word's TF-IDF and BM25.
+		vector_data = pd.DataFrame()
 		if num_proc > 1:
 			with mp.Pool(max_workers) as pool:
 				results = pool.starmap(
 					compute_sparse_vectors, args_list
 				)
 				for result in results:
-					vector_data += result
+					# vector_data += result
+					vector_data = pd.concat(
+						[vector_data, result], ignore_index=True
+					)
 		else:
 			with ThreadPoolExecutor(max_workers) as executor:
 				results = executor.map(
@@ -737,20 +780,26 @@ def main():
 					args_list
 				)
 				for result in results:
-					vector_data += result
+					# vector_data += result
+					vector_data = pd.concat(
+						[vector_data, result], ignore_index=True
+					)
 
-		# Convert to PyArrow Table. Table columns:
-		# doc (str), word (str), tf (int), tf-idf (float), bm25 (float)
-		table = pa.Table.from_pydict({
-			"doc": [record[0] for record in vector_data],
-			"word": [record[1] for record in vector_data],
-			"tf": [record[2] for record in vector_data],
-			"tf-idf": [record[3] for record in vector_data],
-			"bm25": [record[4] for record in vector_data],
-		})
+		# Save to Parquet file (store in output).
+		vector_data.to_parquet(output_file)
 
-		# Save to Parquet file (store in staging).
-		pq.write_table(table, output_file)
+		# # Convert to PyArrow Table. Table columns:
+		# # doc (str), word (str), tf (int), tf-idf (float), bm25 (float)
+		# table = pa.Table.from_pydict({
+		# 	"doc": [record[0] for record in vector_data],
+		# 	"word": [record[1] for record in vector_data],
+		# 	"tf": [record[2] for record in vector_data],
+		# 	"tf-idf": [record[3] for record in vector_data],
+		# 	"bm25": [record[4] for record in vector_data],
+		# })
+
+		# # Save to Parquet file (store in staging).
+		# pq.write_table(table, output_file)
 
 	print("All TF-IDF and BM25 values have been computed.")
 	print(f"Results stored to {output_folder}") 
