@@ -261,7 +261,7 @@ def compute_sparse_vectors(
 	k1: float,
 	b: float,
 	avg_doc_len: float,
-) -> List[Tuple[str, str, int, float, float]]:
+) -> pd.DataFrame:
 	'''
 	Compute the sparse vector values TF-IDF and BM25 for each document,
 		word pair.
@@ -273,40 +273,12 @@ def compute_sparse_vectors(
 	@param: b (float), a hyperparamter necessary for computing BM25.
 	@param: avg_doc_len (float), the average length of all documents in
 		the corpus, needed for computing BM25.
-	@return: Returns a list of tuples containing the document, word,
-		document level word frequency, document level TF-IDF, and the 
+	@return: Returns a pandas DataFrame containing the document (path), 
+		word, document level word frequency, document length, word 
+		inverse document frequency, document level TF-IDF, and the 
 		document level word BM25 score.
 	'''
-	# Initialize list to store all tuple data.
-	vector_data = list()
-
-	# for doc, word_freq in tqdm(doc_to_words.items()):
-	# 	doc_len = sum([value for value in word_freq.values()])
-
-	# 	for word, tf in word_freq.items():
-	# 		# Compute the TF-IDF.
-	# 		word_idf = idf_df.loc[
-	# 			idf_df["word"] == word, "idf"
-	# 		].iloc[0]
-	# 		# word_idf = idf_df[word]
-	# 		# tf_idf = tf * idf_df[word]
-	# 		tf_idf = tf * word_idf
-
-	# 		# Compute the BM25.
-	# 		# numerator = idf_df[word] * tf * (k1 + 1)
-	# 		numerator = word_idf * tf * (k1 + 1)
-	# 		denominator = tf + k1 * (
-	# 			1 - b + b * (doc_len / avg_doc_len)
-	# 		)
-	# 		bm25 = numerator / denominator
-
-	# 		# Update return list with data.
-	# 		vector_data.append(
-	# 			(doc, word, tf, tf_idf, bm25)
-	# 		)
-
-	# Vectorized with pandas.
-	# Flatten doc to words
+	# Process is vectorized with pandas. Flatten doc to words.
 	data = [
 		{"doc": doc, "word": word, "tf": tf}
 		for doc, word_freq in doc_to_words.items()
@@ -344,8 +316,7 @@ def compute_sparse_vectors(
 		)
 	)
 
-	# Return list of tuples.
-	# return vector_data
+	# Return dataframe.
 	return doc_word_df
 
 
@@ -722,9 +693,9 @@ def main():
 		# resources available. 4 processors/threads is advised for a 
 		# 64GB system.
 
-		# Initialize a list object to hold the flattened data 
-		# output.
-		# vector_data = list()
+		# Initialize a pandas DataFrame object to hold the flattened 
+		# data output.
+		vector_data = pd.DataFrame()
 
 		# Load the doc to words map.
 		doc_to_words = load_data_file(file, use_json)
@@ -762,14 +733,12 @@ def main():
 		]
 			
 		# Calculate each document/word's TF-IDF and BM25.
-		vector_data = pd.DataFrame()
 		if num_proc > 1:
 			with mp.Pool(max_workers) as pool:
 				results = pool.starmap(
 					compute_sparse_vectors, args_list
 				)
 				for result in results:
-					# vector_data += result
 					vector_data = pd.concat(
 						[vector_data, result], ignore_index=True
 					)
@@ -780,30 +749,26 @@ def main():
 					args_list
 				)
 				for result in results:
-					# vector_data += result
 					vector_data = pd.concat(
 						[vector_data, result], ignore_index=True
 					)
 
+		# NOTE:
+		# Dataframe contains the following features:
+		# doc (str), word (str), tf (int), doc_len (int), idf (float),
+		# tf_idf (float), bm25 (float)
+
 		# Save to Parquet file (store in output).
 		vector_data.to_parquet(output_file)
-
-		# # Convert to PyArrow Table. Table columns:
-		# # doc (str), word (str), tf (int), tf-idf (float), bm25 (float)
-		# table = pa.Table.from_pydict({
-		# 	"doc": [record[0] for record in vector_data],
-		# 	"word": [record[1] for record in vector_data],
-		# 	"tf": [record[2] for record in vector_data],
-		# 	"tf-idf": [record[3] for record in vector_data],
-		# 	"bm25": [record[4] for record in vector_data],
-		# })
-
-		# # Save to Parquet file (store in staging).
-		# pq.write_table(table, output_file)
 
 	print("All TF-IDF and BM25 values have been computed.")
 	print(f"Results stored to {output_folder}") 
 	gc.collect()
+
+	# NOTE:
+	# Staging uses around 900 MB of storage.
+	# DataFrame with precomputed sparse vector values uses 54 GB of 
+	# storage.
 
 	# Clear staging (if applicable).
 	if clear_staging in ["after", "both"]:
