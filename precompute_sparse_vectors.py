@@ -14,7 +14,8 @@ import math
 import multiprocessing as mp
 import os
 import shutil
-from typing import Dict, List, Tuple
+import string
+from typing import Dict, List, Set
 
 from bs4 import BeautifulSoup
 import msgpack
@@ -320,6 +321,30 @@ def compute_sparse_vectors(
 	return doc_word_df
 
 
+def build_trie(doc_to_word: Dict[str, List[int]]) -> Dict:
+	trie = {}
+	for word, numbers in doc_to_word.items():
+		current = trie
+		for char in word:
+			current = current.setdefault(char, dict())
+
+		# Add the number to the set at the end of the word
+		current.setdefault("doc_id", list()).extend(numbers)
+	
+	return trie
+
+
+def search_trie(trie: Dict, word: str) -> Set | None:
+	current = trie
+	for char in word:
+		if char not in current:
+			return None
+		
+		current = current[char]
+
+	return current.get("doc_id")  # Return the set of numbers if the word ends here
+
+
 def main():
 	# Initialize argument parser.
 	parser = argparse.ArgumentParser()
@@ -375,6 +400,7 @@ def main():
 	corpus_staging = preprocessing_paths["staging_corpus_path"]
 	redirect_staging = preprocessing_paths["staging_redirect_path"]
 	output_folder = preprocessing_paths["sparse_vector_path"]
+	trie_folder = preprocessing_paths["trie_path"]
 
 	# Doc to word and word to doc folder paths.
 	doc_to_words_folder = preprocessing_paths["doc_to_words_path"]
@@ -418,6 +444,9 @@ def main():
 		
 	if not os.path.exists(output_folder):
 		os.makedirs(output_folder, exist_ok=True)
+
+	if not os.path.exists(trie_folder):
+		os.makedirs(trie_folder, exist_ok=True)
 
 	# Clear staging (if applicable).
 	if clear_staging in ["before", "both"]:
@@ -650,7 +679,6 @@ def main():
 		# Save to Parquet file (store in staging).
 		pq.write_table(table, idf_path)
 
-	# Store in staging.
 	print("All Inverse Document Frequencies have been computed.")
 	print(f"Results stored to {idf_path}") 
 	gc.collect()
@@ -765,10 +793,147 @@ def main():
 	print(f"Results stored to {output_folder}") 
 	gc.collect()
 
+	###################################################################
+	# Stage 5: Compute Inverted Index (Sharded Tries)
+	###################################################################
+	print("Precomputing Inverted Index Tries...")
+	
+	# Load vocabulary from IDF parquet.
+	vocab = pd.read_parquet(idf_path)["word"].to_list()
+
+	# Initialize dictionary from list of starting characters.
+	starting_chars = list(string.ascii_lowercase) + ["other"]
+	dictionary = {char: list() for char in starting_chars}
+
+	# Load the document IDs from the parquets and compute the mappings
+	# from each document and their unique ID.
+	parquet_files = [
+		os.path.join(output_folder, file)
+		for file in os.listdir(output_folder)
+		if file.endswith(".parquet")
+	]
+
+	# Path for doc to int mappings and their inverse.
+	doc_to_int_path = os.path.join(
+		trie_folder, f"doc_to_int{extension}"
+	)
+	int_to_doc_path = os.path.join(
+		trie_folder, f"int_to_doc{extension}"
+	)
+
+	# Compute the mappings if they are missing.
+	if not os.path.exists(doc_to_int_path) or not os.path.exists(int_to_doc_path):
+		doc_to_int = dict()
+		id_number = 1
+		for file in tqdm(parquet_files, "Mapping documents to numbers"):
+			documents = pd.read_parquet(file)["doc"].unique().tolist()
+			for doc in documents:
+				doc_to_int[doc] = id_number
+				id_number += 1
+
+		int_to_doc = {
+			str(int_value): doc for doc, int_value in doc_to_int.items()
+		}
+
+		# Save those mappings.
+		write_data_file(doc_to_int_path, doc_to_int, use_json)
+		write_data_file(int_to_doc_path, int_to_doc, use_json)
+	else:
+		# Load the mappings.
+		doc_to_int = load_data_file(doc_to_int_path, use_json)
+		int_to_doc = load_data_file(int_to_doc_path, use_json)
+
+	# Set chunk size for each starting character.
+	trie_max_words = 500_000
+
+	# Initialize metadata.
+	trie_metadata = dict()
+	max_word_len = 60
+
+	# Populate dictionary entries based on their starting character.
+	for term in tqdm(vocab, "Bucketing vocab by starting character"):
+		if len(term) > max_word_len or len(term) == 0:
+			continue
+
+		starting_char = term[0]
+		if starting_char in string.ascii_lowercase:
+			dictionary[starting_char].append(term)
+		else:
+			dictionary["other"].append(term)
+
+	# Iterate through each starting character in the dictionary.
+	for starting_char in sorted(list(dictionary.keys())):
+		print(f"Processing all words with starting character '{starting_char}'")
+		terms = sorted(dictionary[starting_char])
+		
+		# Chunk the list of terms.
+		term_chunks = [
+			terms[i:i + trie_max_words]
+			for i in range(0, len(terms), trie_max_words)
+		]
+
+		# Update metadata and build out the trie for each chunk.
+		trie_metadata[starting_char] = [
+			(chunk[0], chunk[-1]) for chunk in term_chunks
+		]
+
+		# Iterate through each document (parquet) and identify which
+		# ones contain the words located in each chunk.
+		for idx, chunk in enumerate(tqdm(term_chunks)):
+			file = f"{starting_char}_chunk_{idx + 1}{extension}"
+			path = os.path.join(trie_folder, file)
+
+			if os.path.exists(path):
+				continue
+
+			word_doc_map = {word: list() for word in chunk}
+
+			for parquet_file in tqdm(parquet_files, f"Scanning through parquets for chunk {idx + 1}"):
+				df = pd.read_parquet(parquet_file)
+
+				# for word in chunk:
+				# 	word_doc_map[word] += [
+				# 		doc_to_int[doc] 
+				# 		for doc in df.loc[df["word"] == word, "doc"].unique().tolist()
+				# 	]
+
+				# Filter the dataframe for relevant words in the current chunk
+				filtered_df = df[df["word"].isin(chunk)]
+
+				# Map documents to their integer representation and group by 'word'
+				filtered_df["doc"] = filtered_df["doc"].map(doc_to_int)
+				grouped = filtered_df.groupby("word")["doc"].apply(set)
+
+				# Update word_doc_map with the new documents
+				for word, doc_set in grouped.items():
+					word_doc_map[word].extend(doc_set - set(word_doc_map[word]))
+
+			# for file in tqdm(doc_to_words_files, f"Scanning through parquets for chunk {idx + 1}"):
+			# 	doc_to_words = load_data_file(file, use_json)
+
+			# 	for doc in tqdm(list(doc_to_words.keys()), f"Scanning through documents in parquets"):
+			# 		word_freq = doc_to_words[doc]
+
+			# 		for word in chunk:
+			# 			if word in list(word_freq.keys()):
+			# 				word_doc_map[word].append(doc_to_int[doc])
+			
+			# Build the trie for that chunk.
+			trie = build_trie(word_doc_map)
+
+			# Save the trie.
+			write_data_file(path, trie, use_json)
+
+	print("All Inverted Index Tries have been computed.")
+	print(f"Results stored to {trie_folder}") 
+	gc.collect()
+
 	# NOTE:
 	# Staging uses around 900 MB of storage.
 	# DataFrame with precomputed sparse vector values uses 54 GB of 
-	# storage.
+	# storage. This could be reduced significantly (ie only storing the
+	# document, word, tf_idf, and bm25) but I don't want to deal with 
+	# that right now.
 
 	# Clear staging (if applicable).
 	if clear_staging in ["after", "both"]:

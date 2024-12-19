@@ -42,7 +42,8 @@
         "staging_idf_path": "./metadata/bag_of_words/staging/idf_cache",
         "staging_corpus_path": "./metadata/bag_of_words/staging/corpus_cache",
         "staging_redirect_path": "./metadata/bag_of_words/staging/redirect_cache",
-        "sparse_vector_path": "./metadata/bag_of_words/sparse_vectors"
+        "sparse_vector_path": "./metadata/bag_of_words/sparse_vectors",
+        "trie_path": "./metadata/bag_of_words/tries"
     },
     "models": {
         "bert": {
