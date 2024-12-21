@@ -897,37 +897,99 @@ def main():
 	# exit()
 
 	# 1 index per file (ETA 3.5 hours).
-	for idx, parquet_file in enumerate(tqdm(parquet_files)):
-		base_name = os.path.basename(parquet_file)
-		print(f"Building tries for {base_name} ({idx + 1}/{len(parquet_files)})")
+	# for idx, parquet_file in enumerate(tqdm(parquet_files)):
+	# 	base_name = os.path.basename(parquet_file)
+	# 	print(f"Building tries for {base_name} ({idx + 1}/{len(parquet_files)})")
 
-		# Load dataframe and isolate all unique words in the dataframe.
-		df = pd.read_parquet(parquet_file)
-		words = [
-			word for word in df["word"].unique().tolist()
-			if len(word) < max_word_len
-		]
+	# 	# Load dataframe and isolate all unique words in the dataframe.
+	# 	df = pd.read_parquet(parquet_file)
+	# 	words = [
+	# 		word for word in df["word"].unique().tolist()
+	# 		if len(word) < max_word_len
+	# 	]
 
-		# Initialize the file.
-		file_name = base_name.replace(".parquet", extension)
-		file = os.path.join(trie_folder, file_name)
+	# 	# Initialize the file.
+	# 	file_name = base_name.replace(".parquet", extension)
+	# 	file = os.path.join(trie_folder, file_name)
 
-		# Index.
-		word_doc_map = {word: list() for word in words}
+	# 	# Index.
+	# 	word_doc_map = {word: list() for word in words}
 
-		# Filter the dataframe for relevant words in the current chunk
-		filtered_df = df[df["word"].isin(words)]
+	# 	# Filter the dataframe for relevant words in the current chunk
+	# 	filtered_df = df[df["word"].isin(words)]
 
-		# Map documents to their integer representation and group by 'word'
-		filtered_df["doc"] = filtered_df["doc"].map(doc_to_int)
-		grouped = filtered_df.groupby("word")["doc"].apply(set)
+	# 	# Map documents to their integer representation and group by 'word'
+	# 	filtered_df["doc"] = filtered_df["doc"].map(doc_to_int)
+	# 	grouped = filtered_df.groupby("word")["doc"].apply(set)
 
-		# Update word_doc_map with the new documents
-		for word, doc_set in grouped.items():
-			word_doc_map[word].extend(doc_set - set(word_doc_map[word]))
+	# 	# Update word_doc_map with the new documents
+	# 	for word, doc_set in grouped.items():
+	# 		word_doc_map[word].extend(doc_set - set(word_doc_map[word]))
 		
-		# Save index to file.
+	# 	# Save index to file.
+	# 	write_data_file(file, word_doc_map, use_json)
+
+	# Index sorted by most common words and chunked (ETA 84 hours).
+	# Load the vocab and the document frequencies.
+	vocab = dict()
+	for word_to_docs_file in tqdm(word_to_docs_files, "Loading vocab"):
+		vocab.update(load_data_file(word_to_docs_file, use_json))
+
+	# Sort the words based on those with the most common occurences 
+	# (highest document frequencies).
+	sorted_vocab = sorted(
+		vocab, key=lambda key: vocab[key], reverse=True # Work.
+	)
+
+	# Chunk the vocab.
+	chunk_size = 500_000 #1_000_000
+	vocab_chunks = [
+		sorted_vocab[i:i + chunk_size]
+		for i in range(0, len(sorted_vocab), chunk_size)
+	]
+	
+	# Memory cleanup.
+	del vocab
+	del sorted_vocab
+	gc.collect()
+
+	for idx, chunk in enumerate(vocab_chunks):
+		print(f"Processing vocab chunk {idx + 1}/{len(vocab_chunks)}")
+
+		file = os.path.join(
+			trie_folder, f"inverted_index_{idx + 1}{extension}"
+		)
+
+		# if os.path.exists(file):
+		# 	continue
+
+		word_doc_map = {word: list() for word in chunk}
+
+		for parquet_file in tqdm(parquet_files, f"Scanning through parquets for chunk {idx + 1}"):
+			df = pd.read_parquet(parquet_file)
+
+			# Filter the dataframe for relevant words in the current chunk
+			filtered_df = df[df["word"].isin(chunk)]
+
+			# TODO:
+			# Fix warning error that is given:
+			# /home/diego/Documents/GitHub/WikipediaEnSearch/precompute_sparse_vectors.py:975: SettingWithCopyWarning: 
+			# A value is trying to be set on a copy of a slice from a DataFrame.
+			# Try using .loc[row_indexer,col_indexer] = value instead
+
+			# See the caveats in the documentation: https://pandas.pydata.org/pandas-docs/stable/user_guide/indexing.html#returning-a-view-versus-a-copy
+			# filtered_df["doc"] = filtered_df["doc"].map(doc_to_int)
+
+			# Map documents to their integer representation and group by 'word'
+			filtered_df["doc"] = filtered_df["doc"].map(doc_to_int)
+			grouped = filtered_df.groupby("word")["doc"].apply(set)
+
+			# Update word_doc_map with the new documents
+			for word, doc_set in grouped.items():
+				word_doc_map[word].extend(doc_set - set(word_doc_map[word]))
+
 		write_data_file(file, word_doc_map, use_json)
+
 
 	exit()
 
