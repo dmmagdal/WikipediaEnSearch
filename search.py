@@ -13,6 +13,8 @@ import hashlib
 import heapq
 import json
 import math
+import mmap
+import multiprocessing as mp
 import os
 import string
 import time
@@ -25,7 +27,7 @@ import lancedb
 import msgpack
 import numpy as np
 import pandas as pd
-import polars as pl
+# import polars as pl
 import pyarrow as pa
 import torch
 from tqdm import tqdm
@@ -244,8 +246,92 @@ def print_results(results: List, search_type: str = "tf-idf") -> None:
 		print(f"Article Text:\n{text[indices[0]:indices[1]]}")
 
 
+class InvertedIndex:
+	def __init__(self, index_dir: str, use_json: bool = False, use_multiprocessing: bool = False) -> None:
+		extension = ".json" if use_json else ".msgpack"
+		self.use_json = use_json
+		self.use_multiprocessing = use_multiprocessing
+
+		# Isolate map for int to doc (load as well).
+		self.int_to_doc_file = f"int_to_doc{extension}"
+		self.int_to_doc_path = os.path.join(
+			index_dir, self.int_to_doc_file
+		)
+		self.int_to_doc = load_data_file(
+			self.int_to_doc_path, use_json
+		)
+
+		self.index_files = [
+			os.path.join(index_dir, file) 
+			for file in os.listdir(index_dir)
+			if file.endswith(extension) and "_to_" not in file
+		]
+		self.index_files = [
+			file for file in self.index_files
+			if os.path.isfile(file)
+		] # Filter to only contain files.
+
+
+	def query(self, words: List[str], num_workers: int = 8) -> List[str]:
+		chunk_size = math.ceil(len(self.index_files) / num_workers)
+		chunks = [
+			self.index_files[i:i + chunk_size]
+			for i in range(0, len(self.index_files), chunk_size)
+		]
+		args_list = [(words, index_files) for index_files in chunks]
+		docs_set = set()
+
+		if self.use_multiprocessing:
+			num_workers = min(mp.cpu_count(), num_workers)
+			with mp.Pool(num_workers) as pool:
+				results = pool.starmap(
+					self.get_docs_from_file, args_list
+				)
+				for result in results:
+					docs_set.update(result)
+		else:
+			with concurrent.futures.ThreadPoolExecutor(num_workers) as executor:
+				results = executor.map(
+					lambda args: self.get_docs_from_file(*args),
+					args_list
+				)
+				for result in results:
+					docs_set.update(result)
+
+		return list(docs_set)
+
+
+	def get_docs_from_file(self, words: List[str], files: List[str]) -> List[str]:
+		docs_set = set()
+		for file in tqdm(files):
+			with open(file, "rb") as f:
+				# Memory-map the file
+				mm = mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ)
+
+				if self.use_json:
+					# Load JSON content incrementally
+					data = json.loads(mm.read().decode('utf-8'))
+				else:
+					# Decode Msgpack content incrementally
+					unpacker = msgpack.Unpacker(mm, raw=False)
+					data = unpacker.unpack()
+				
+				for word in words:
+					if word in list(data.keys()):
+						docs_set.update(data[word])
+				
+				# Clean up
+				mm.close()
+		
+		return self.decode_documents(list(docs_set))
+
+
+	def decode_documents(self, document_ids: List[str]) -> List[str]:
+		return [self.int_to_doc[str(doc)] for doc in document_ids]
+
+
 class BagOfWords: 
-	def __init__(self, bow_dir: str, corpus_size: int=-1, srt: float=-1.0, use_json=False) -> None:
+	def __init__(self, bow_dir: str, corpus_size: int=-1, srt: float=-1.0, use_json: bool = False) -> None:
 		'''
 		Initialize a Bag-of-Words search object.
 		@param: bow_dir (str), a path to the directory containing the 

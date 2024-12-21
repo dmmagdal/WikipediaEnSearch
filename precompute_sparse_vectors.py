@@ -351,19 +351,19 @@ def main():
 	parser.add_argument(
 		"--use_json",
 		action="store_true",
-		help=""
+		help="Whether to read from JSON or msgpack files. Default is false/not specified."
 	)
 	parser.add_argument(
 		"--num_proc",
 		type=int,
 		default=1,
-		help=""
+		help="How many processors to use. Default is 1."
 	)
 	parser.add_argument(
 		"--num_thread",
 		type=int,
 		default=1,
-		help=""
+		help="How many threads to use. Default is 1."
 	)
 	parser.add_argument(
 		"--clear-staging",
@@ -850,6 +850,153 @@ def main():
 	trie_metadata = dict()
 	max_word_len = 60
 
+	# Variations of inverted index
+	# Straight inverted index vs Trie based
+	# - Trie offers better compression for storage at the cost of 
+	#	compute time required for loading.
+	# - Straight inverted index is easier to implement and 
+	#	conceptualize.
+	# 1 index per file
+	# - linear but bound by number of files (O(195 files)).
+	# 1 index per starting char.
+	# - linear but bound by number of characters (O(27) characters).
+	# - smaller bounding but more data per index.
+	# Chunk every X number of words
+	# - doesn't handle the size of the vocab (42M words) unless X is
+	#	greater than 500K.
+
+	# 1 index total (ETA 4 hours). OOMed after 1.25 hours (49/195 
+	# files).
+	# index = dict()
+	# for idx, parquet_file in enumerate(tqdm(parquet_files)):
+	# 	base_name = os.path.basename(parquet_file)
+	# 	print(f"Build inverted index from {base_name} ({idx + 1}/{len(parquet_files)})")
+
+	# 	# Load dataframe and isolate all unique words in the dataframe.
+	# 	df = pd.read_parquet(parquet_file)
+	# 	words = [
+	# 		word for word in df["word"].unique().tolist() 
+	# 		if len(word) < max_word_len
+	# 	]
+	# 	new_words = set(words).difference(set(index.keys()))
+	# 	index.update({word: list() for word in new_words})
+
+	# 	# Filter the dataframe for relevant words in the current chunk
+	# 	filtered_df = df[df["word"].isin(words)]
+
+	# 	# Map documents to their integer representation and group by 'word'
+	# 	filtered_df["doc"] = filtered_df["doc"].map(doc_to_int)
+	# 	grouped = filtered_df.groupby("word")["doc"].apply(set)
+
+	# 	# Update word_doc_map with the new documents
+	# 	for word, doc_set in grouped.items():
+	# 		index[word].extend(doc_set - set(index[word]))
+			
+	# path = os.path.join(trie_folder, f"inverted_index{extension}")
+	# write_data_file(path, index, use_json)
+	# exit()
+
+	# 1 index per file (ETA 3.5 hours).
+	for idx, parquet_file in enumerate(tqdm(parquet_files)):
+		base_name = os.path.basename(parquet_file)
+		print(f"Building tries for {base_name} ({idx + 1}/{len(parquet_files)})")
+
+		# Load dataframe and isolate all unique words in the dataframe.
+		df = pd.read_parquet(parquet_file)
+		words = [
+			word for word in df["word"].unique().tolist()
+			if len(word) < max_word_len
+		]
+
+		# Initialize the file.
+		file_name = base_name.replace(".parquet", extension)
+		file = os.path.join(trie_folder, file_name)
+
+		# Index.
+		word_doc_map = {word: list() for word in words}
+
+		# Filter the dataframe for relevant words in the current chunk
+		filtered_df = df[df["word"].isin(words)]
+
+		# Map documents to their integer representation and group by 'word'
+		filtered_df["doc"] = filtered_df["doc"].map(doc_to_int)
+		grouped = filtered_df.groupby("word")["doc"].apply(set)
+
+		# Update word_doc_map with the new documents
+		for word, doc_set in grouped.items():
+			word_doc_map[word].extend(doc_set - set(word_doc_map[word]))
+		
+		# Save index to file.
+		write_data_file(file, word_doc_map, use_json)
+
+	exit()
+
+	# 1 trie per starting char per file (ETA 37 hours).
+	for idx, parquet_file in enumerate(tqdm(parquet_files)):
+		base_name = os.path.basename(parquet_file)
+		print(f"Building tries for {base_name} ({idx + 1}/{len(parquet_files)})")
+
+		# Load dataframe and isolate all unique words in the dataframe.
+		df = pd.read_parquet(parquet_file)
+		words = df["word"].unique().tolist()
+		words = [word for word in words if len(word) < max_word_len]
+
+		# Initialize the folder for the file.
+		folder_name = base_name.replace(".parquet", "")
+		file_folder = os.path.join(trie_folder, folder_name)
+		os.makedirs(file_folder, exist_ok=True)
+
+		# Iterate through every possible starting character.
+		for starting_char in list(dictionary.keys()):
+			print(f"Processing words that start with character '{starting_char}'")
+			file = f"{starting_char}_{extension}"
+			path = os.path.join(file_folder, file)
+
+			if os.path.exists(path):
+				continue
+
+			# Isolate all terms starting with the character.
+			if starting_char != "other":
+				filtered_words = [
+					word for word in words
+					if word[0] == starting_char
+				]
+			else:
+				filtered_words = [
+					word for word in words
+					if word[0] not in string.ascii_lowercase
+				]
+
+			word_doc_map = {word: list() for word in filtered_words}
+
+			# Filter the dataframe for relevant words in the current chunk
+			filtered_df = df[df["word"].isin(filtered_words)]
+
+			# Map documents to their integer representation and group by 'word'
+			filtered_df["doc"] = filtered_df["doc"].map(doc_to_int)
+			grouped = filtered_df.groupby("word")["doc"].apply(set)
+
+			# Update word_doc_map with the new documents
+			for word, doc_set in grouped.items():
+				word_doc_map[word].extend(doc_set - set(word_doc_map[word]))
+			
+			# Build the trie for that chunk.
+			trie = build_trie(word_doc_map)
+
+			# Save the trie.
+			write_data_file(path, trie, use_json)
+	exit()
+
+	# NOTE:
+	# Building tries by chunking across 500K words per starting char
+	# was taking way too long to compute, even with vectorization 
+	# thanks to pandas.
+	# Building tries per file and splitting across starting char does
+	# perform much better in terms of time to complete the overall
+	# task (ETA 37 hours for the whole dataset instead of 25 hours for
+	# one chunk of 100K words). Unfortunately, this will generate A LOT 
+	# of files.
+
 	# Populate dictionary entries based on their starting character.
 	for term in tqdm(vocab, "Bucketing vocab by starting character"):
 		if len(term) > max_word_len or len(term) == 0:
@@ -891,12 +1038,6 @@ def main():
 			for parquet_file in tqdm(parquet_files, f"Scanning through parquets for chunk {idx + 1}"):
 				df = pd.read_parquet(parquet_file)
 
-				# for word in chunk:
-				# 	word_doc_map[word] += [
-				# 		doc_to_int[doc] 
-				# 		for doc in df.loc[df["word"] == word, "doc"].unique().tolist()
-				# 	]
-
 				# Filter the dataframe for relevant words in the current chunk
 				filtered_df = df[df["word"].isin(chunk)]
 
@@ -907,16 +1048,6 @@ def main():
 				# Update word_doc_map with the new documents
 				for word, doc_set in grouped.items():
 					word_doc_map[word].extend(doc_set - set(word_doc_map[word]))
-
-			# for file in tqdm(doc_to_words_files, f"Scanning through parquets for chunk {idx + 1}"):
-			# 	doc_to_words = load_data_file(file, use_json)
-
-			# 	for doc in tqdm(list(doc_to_words.keys()), f"Scanning through documents in parquets"):
-			# 		word_freq = doc_to_words[doc]
-
-			# 		for word in chunk:
-			# 			if word in list(word_freq.keys()):
-			# 				word_doc_map[word].append(doc_to_int[doc])
 			
 			# Build the trie for that chunk.
 			trie = build_trie(word_doc_map)
