@@ -942,7 +942,10 @@ def main():
 	)
 
 	# Chunk the vocab.
-	chunk_size = 500_000 #1_000_000
+	# chunk_size = 1_000_000	# OOM (43 files)
+	chunk_size = 500_000	# OOM (85 files)
+	# chunk_size = 300_000	# ()
+	# chunk_size = 250_000	# ()
 	vocab_chunks = [
 		sorted_vocab[i:i + chunk_size]
 		for i in range(0, len(sorted_vocab), chunk_size)

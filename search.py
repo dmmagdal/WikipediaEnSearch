@@ -334,6 +334,7 @@ class InvertedIndex:
 class SortedInvertedIndex(InvertedIndex):
 	def __init__(self, index_dir: str, use_json: bool = False, use_multiprocessing: bool = False) -> None:
 		extension = ".json" if use_json else ".msgpack"
+		self.extension = extension
 		self.use_json = use_json
 		self.use_multiprocessing = use_multiprocessing
 
@@ -361,8 +362,11 @@ class SortedInvertedIndex(InvertedIndex):
 
 
 	def query(self, words: List[str]) -> List[str]:
+		# Initialize the set to contain the list of unique document 
+		# IDs.
 		docs_set = set()
 
+		# Iterate through the inverted index files.
 		for file in tqdm(self.index_files):
 			# Skip remaining files if the query words list is empty.
 			if len(words) == 0:
@@ -402,11 +406,14 @@ class SortedInvertedIndex(InvertedIndex):
 			del found_words
 			gc.collect()
 		
+		# Return the decoded document IDs list (as document paths).
 		return self.decode_documents(list(docs_set))
 	
 
 	def get_number(self, filename: str) -> int:
-		match = re.search(r"inverted_index_(\d+)\.txt", filename)
+		match = re.search(
+			r"inverted_index_(\d+)" + self.extension, filename
+		)
 		return int(match.group(1)) if match else -1  # Default to -1 if no match
 
 
