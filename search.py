@@ -16,6 +16,7 @@ import math
 import mmap
 import multiprocessing as mp
 import os
+import re
 import string
 import time
 from typing import List, Dict, Tuple
@@ -324,6 +325,89 @@ class InvertedIndex:
 				mm.close()
 		
 		return self.decode_documents(list(docs_set))
+
+
+	def decode_documents(self, document_ids: List[str]) -> List[str]:
+		return [self.int_to_doc[str(doc)] for doc in document_ids]
+	
+
+class SortedInvertedIndex(InvertedIndex):
+	def __init__(self, index_dir: str, use_json: bool = False, use_multiprocessing: bool = False) -> None:
+		extension = ".json" if use_json else ".msgpack"
+		self.use_json = use_json
+		self.use_multiprocessing = use_multiprocessing
+
+		# Isolate map for int to doc (load as well).
+		self.int_to_doc_file = f"int_to_doc{extension}"
+		self.int_to_doc_path = os.path.join(
+			index_dir, self.int_to_doc_file
+		)
+		self.int_to_doc = load_data_file(
+			self.int_to_doc_path, use_json
+		)
+
+		self.index_files = [
+			os.path.join(index_dir, file) 
+			for file in os.listdir(index_dir)
+			if file.endswith(extension) and "_to_" not in file
+		]
+		self.index_files = [
+			file for file in self.index_files
+			if os.path.isfile(file)
+		] # Filter to only contain files.
+		self.index_files = sorted(
+			self.index_files, key=self.get_number
+		) # Sort by the file number (NOT lexicographical).
+
+
+	def query(self, words: List[str]) -> List[str]:
+		docs_set = set()
+
+		for file in tqdm(self.index_files):
+			# Skip remaining files if the query words list is empty.
+			if len(words) == 0:
+				continue
+
+			# Initialize a list/set to keep track of words found so 
+			# far.
+			found_words = set()
+
+			with open(file, "rb") as f:
+				# Memory-map the file.
+				mm = mmap.mmap(f.fileno(), length=0, access=mmap.ACCESS_READ)
+
+				if self.use_json:
+					# Load JSON content incrementally
+					data = json.loads(mm.read().decode('utf-8'))
+				else:
+					# Decode Msgpack content incrementally
+					unpacker = msgpack.Unpacker(mm, raw=False)
+					data = unpacker.unpack()
+				
+				# Iterate through all query words and search for each
+				# key/value pair for the file.
+				for word in words:
+					if word in list(data.keys()):
+						docs_set.update(data[word])
+						found_words.add(word)
+				
+				# Clean up
+				mm.close()
+
+			# Remove found words from the query list.
+			for word in found_words:
+				words.remove(word)
+
+			# Memory cleanup.
+			del found_words
+			gc.collect()
+		
+		return self.decode_documents(list(docs_set))
+	
+
+	def get_number(self, filename: str) -> int:
+		match = re.search(r"inverted_index_(\d+)\.txt", filename)
+		return int(match.group(1)) if match else -1  # Default to -1 if no match
 
 
 	def decode_documents(self, document_ids: List[str]) -> List[str]:
