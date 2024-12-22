@@ -128,6 +128,39 @@
      - Use freedium since this is a premium medium article
 
 
+### Keyword Extraction
+
+ - Keyphrase Extraction in NLP ([geeksforgeeks](https://www.geeksforgeeks.org/keyphrase-extraction-in-nlp/))
+ - Keyword Extraction Methods in NLP ([geeksforgeeks](https://www.geeksforgeeks.org/keyword-extraction-methods-in-nlp/))
+ - Four of the easiest and most effective methods to Extract Keywords from a Single Text using Python ([Analytics Vidhya](https://www.analyticsvidhya.com/blog/2022/01/four-of-the-easiest-and-most-effective-methods-of-keyword-extraction-from-a-single-text-using-python/))
+ - Fast and Effective ways to Extract Keyphrases using TFIDF with Python ([Analytics Vidhya](https://www.analyticsvidhya.com/blog/2021/12/how-to-extract-key-phrases-using-tfidf-with-python/))
+ - Keyword Extraction Methods from Documents in NLP ([Analytics Vidhya](https://www.analyticsvidhya.com/blog/2022/03/keyword-extraction-methods-from-documents-in-nlp/))
+ - Keyword Extraction process in Python with Natural Language Processing(NLP) ([Medium](https://towardsdatascience.com/keyword-extraction-process-in-python-with-natural-language-processing-nlp-d769a9069d5c))
+ - [Top 5 Keyword Extraction Algorithms in NLP](https://www.analyticssteps.com/blogs/top-5-keyword-extraction-algorithms-nlp)
+ - Rust
+     - Keyword extraction in rust ([GitHub](https://github.com/tugascript/keyword-extraction-rs))
+ - How To Implement Keyword Extraction [3 Ways In Python With NLTK, SpaCy & BERT] ([blog site](https://spotintelligence.com/2022/12/13/keyword-extraction/))
+ - Algorithms
+     - Rake
+         - [Understanding the RAKE Algorithm in 2024: A Simple Guide](https://www.markovml.com/blog/rake-algorithm)
+         - RAKE Explained with python Implementation ([Medium](https://medium.com/@bharathwajan/rake-explained-with-python-implementation-95ecaeb6c580))
+         - Rapid Keyword Extraction (RAKE) Algorithm in Natural Language Processing ([Analytics Vidhya](https://www.analyticsvidhya.com/blog/2021/10/rapid-keyword-extraction-rake-algorithm-in-natural-language-processing/))
+         - Extracting Keyphrases from Text: RAKE and Gensim in Python ([Medium](https://towardsdatascience.com/extracting-keyphrases-from-text-rake-and-gensim-in-python-eefd0fad582f))
+         - Harnessing the Power of LLMs for Keyword Extraction with RAKE: A Python Sample Guide ([Medium](https://medium.com/@amb39305/harnessing-the-power-of-llms-for-keyword-extraction-with-rake-a-python-sample-guide-a305608bc332))
+     - Yake
+         - [YAKE Keyword Analysis: A Simplified Guide for NLP Enthusiasts](https://www.markovml.com/blog/yake-keyword-extraction)
+         - [Rust Keyword Extraction: Creating the YAKE! algorithm from scratch](https://dev.to/tugascript/rust-keyword-extraction-creating-the-yake-algorithm-from-scratch-4n2l)
+     - Textrank
+         - Two minutes NLP — Keyword and keyphrase extraction with PKE ([Medium](https://medium.com/nlplanet/two-minutes-nlp-keyword-and-keyphrase-extraction-with-pke-5a0260e75f3e))
+         - Implementation of TextRank Algorithm Methods for Keyword Extraction ([Medium](https://medium.com/@theofany007/implementation-of-textrank-and-methods-for-keyword-extraction-b84f8f145b2e))
+         - Decomposing the TextRank algorithm, to grasp the main idea behind it + code implementation ([Medium](https://medium.com/@fabiosalern/decomposing-the-textrank-algorithm-to-grasp-the-main-idea-behind-it-code-implementation-b29414eba821))
+         - Math behind TextRank Algorithm ([Medium](https://ankitnitjsr13.medium.com/text-rank-algorithm-a8c2cc58ea9c))
+         - An Introduction to Text Summarization using the TextRank Algorithm (with Python implementation) ([Analytics Vidhya](https://www.analyticsvidhya.com/blog/2018/11/introduction-text-summarization-textrank-python/))
+         - [TextRank: Bringing Order into Texts](https://web.eecs.umich.edu/~mihalcea/papers/mihalcea.emnlp04.pdf)
+     - KeyBERT
+         - Keyphrase Extraction with BERT Transformers and Noun Phrases ([Medium](https://towardsdatascience.com/enhancing-keybert-keyword-extraction-results-with-keyphrasevectorizers-3796fa93f4db))
+
+
 ### Similar Works
 
  - [Developing a Search Engine Framework for Wikipedia Articles](https://medium.com/@akleber/developing-a-search-engine-framework-for-wikipedia-articles-81fcbd95a928)
@@ -146,13 +179,8 @@
  - [How to use PyO3 to write Python extensions in Rust](https://www.youtube.com/watch?v=fgC8YxNwBfQ)
  - [How To Make Your Python Packages Really Fast With RUST](https://www.youtube.com/watch?v=jlWhnrk8go0)
  - [Which programming language is faster at reading?](https://dev.to/fredysandoval/which-programming-language-is-faster-at-reading-10gn)
-
-
-### Keyword Extraction
-
- - Textrank
- - Rake
- - Yake
+ - RusTy - Rust bindings for SpaCy ([GitHub](https://github.com/dluman/rusTy))
+ - [Rust Keyword Extraction: Creating the YAKE! algorithm from scratch](https://dev.to/tugascript/rust-keyword-extraction-creating-the-yake-algorithm-from-scratch-4n2l)
 
 
 ### NLP Frameworks/Libraries in Other Languages
