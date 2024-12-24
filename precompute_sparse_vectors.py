@@ -789,6 +789,10 @@ def main():
 		# Save to Parquet file (store in output).
 		vector_data.to_parquet(output_file)
 
+	# Clear loaded files.
+	del redirect_files_df
+	del idf_df
+
 	print("All TF-IDF and BM25 values have been computed.")
 	print(f"Results stored to {output_folder}") 
 	gc.collect()
@@ -937,20 +941,94 @@ def main():
 
 	# Sort the words based on those with the most common occurences 
 	# (highest document frequencies).
+	# sorted_vocab = sorted(
+	# 	vocab, key=lambda key: vocab[key], reverse=True # Work.
+	# ) # For chunk by word
 	sorted_vocab = sorted(
-		vocab, key=lambda key: vocab[key], reverse=True # Work.
-	)
+		[(word, count) for word, count in vocab.items()], 
+		key=lambda x: x[1],
+		reverse=True
+	) # For chunk by number of documents
 
 	# Chunk the vocab.
 	# chunk_size = 1_000_000	# OOM (43 files)
-	chunk_size = 500_000	# OOM (85 files)
-	# chunk_size = 300_000	# ()
-	# chunk_size = 250_000	# ()
-	vocab_chunks = [
-		sorted_vocab[i:i + chunk_size]
-		for i in range(0, len(sorted_vocab), chunk_size)
-	]
+	# chunk_size = 500_000	# OOM (85 files)
+	# chunk_size = 300_000	# OOM
+	# chunk_size = 250_000	# OOM
+	# chunk_size = 100_000	# OOM (430 files)
+	# chunk_size = 50_000	# OOM (850 files)
+	# chunk_size = 10_000	# OOM (4300 files)
+	# chunk_size = 5_000	# OOM
+	# chunk_size = 1_000	# OOM
+	# chunk_size = 500	# OOM at (175/195 files or 90% on first chunk)
+
+	# vocab_chunks = [
+	# 	sorted_vocab[i:i + chunk_size]
+	# 	for i in range(0, len(sorted_vocab), chunk_size)
+	# ]
+
+	# for idx, word in enumerate(vocab_chunks[0][:20]):
+	# 	print(f"{word}: {vocab[word]} documents")
 	
+	# Graph highest number vocab values.
+	# import matplotlib.pyplot as plt
+	# vocab_values = sorted(list(vocab.values()), reverse=True)
+	# for i in [500, 1000, 5000]:
+	# 	vocab_slice = [
+	# 		(idx + 1, value) 
+	# 		for idx, value in enumerate(vocab_values[:i])
+	# 	]
+	# 	x = [vocab[0] for vocab in vocab_slice]
+	# 	y = [vocab[1] for vocab in vocab_slice]
+
+	# 	# Create the plot
+	# 	plt.plot(x, y)
+
+	# 	# Add labels and title (optional)
+	# 	plt.xlabel('X-axis')
+	# 	plt.ylabel('Y-axis')
+	# 	plt.title(f'Vocab to Doc Freq (top-{i})')
+
+	# 	plt.savefig(f'Vocab to Doc Freq (top-{i}).png')
+	# exit()
+
+	# NOTE:
+	# The above code block that charts word document frequency (after 
+	# sorting) gave interesting figures that empirically validated 
+	# zipf's law. Therefore, it would make sense not to chunk based on
+	# number of words but rather chunk based on the aggregation of the
+	# number of documents each word is mapped to.
+	
+	# Adjust maximum number of aggregated documents according to memory
+	# constraints.
+	# max_aggr_doc_count = 1_000_000	# Should try this
+	max_aggr_doc_count = 500_000	# Running with this - consumes ~31 GB RAM on server
+	# max_aggr_doc_count = 250_000
+	# max_aggr_doc_count = 100_000
+	# max_aggr_doc_count = 50_000
+	# max_aggr_doc_count = 25_000
+
+	# Chunk the sorted list based on max_aggr_doc_count
+	vocab_chunks = []
+	current_chunk = []
+	current_sum = 0
+
+	for item in sorted_vocab:
+		if current_sum + item[1] > max_aggr_doc_count:
+			# Add the current chunk to the chunks list and start a new 
+			# chunk.
+			vocab_chunks.append(current_chunk)
+			current_chunk = []
+			current_sum = 0
+
+		# current_chunk.append(item)
+		current_chunk.append(item[0])
+		current_sum += item[1]
+
+	# Add the last chunk if it has any items
+	if current_chunk:
+		vocab_chunks.append(current_chunk)
+
 	# Memory cleanup.
 	del vocab
 	del sorted_vocab
