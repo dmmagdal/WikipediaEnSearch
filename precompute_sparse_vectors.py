@@ -1001,14 +1001,22 @@ def main():
 	
 	# Adjust maximum number of aggregated documents according to memory
 	# constraints.
-	# max_aggr_doc_count = 1_000_000	# Should try this
-	max_aggr_doc_count = 500_000	# Running with this - consumes ~31 GB RAM on server
+	# max_aggr_doc_count = 2_500_000	# Should try this
+	# max_aggr_doc_count = 2_000_000	# Should try this
+	# max_aggr_doc_count = 1_500_000	# Should try this
+	max_aggr_doc_count = 1_000_000	# Running with this - consumes ~34 GB RAM on server - 62 files - max file size ~800MB - ~4 days
+	# max_aggr_doc_count = 500_000	# Running with this - consumes ~31 GB RAM on server - 123 files - max file size ~400MB - ~8 days
 	# max_aggr_doc_count = 250_000
 	# max_aggr_doc_count = 100_000
 	# max_aggr_doc_count = 50_000
 	# max_aggr_doc_count = 25_000
 
-	# Chunk the sorted list based on max_aggr_doc_count
+	# NOTE:
+	# Size of folder containing file-level inverted index: 15 GB
+	# Size of folder containing aggregated documents inverted index: 13 GB (regardless of max aggr count)
+	# Ideal config is to use >= 1M (if memory permits) for fastest time to create inverted index.
+
+	# Chunk the sorted list based on max_aggr_doc_count.
 	vocab_chunks = []
 	current_chunk = []
 	current_sum = 0
@@ -1041,8 +1049,8 @@ def main():
 			trie_folder, f"inverted_index_{idx + 1}{extension}"
 		)
 
-		# if os.path.exists(file):
-		# 	continue
+		if os.path.exists(file):
+			continue
 
 		word_doc_map = {word: list() for word in chunk}
 
