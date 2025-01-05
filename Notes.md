@@ -69,7 +69,7 @@
          - Directy category mapping with BERT similarity
              - Similar to "Category traversal with BERT similarity" except no category tree is involved.
              - Pros:
-                 - No category tree means more direct access to end categories
+                 - No category tree means more direct access to end categories.
                  - Let's the vector DB do all the work in one shot.
              - Cons:
                  - Does not work with raw text queries like "What color are sapphires?".
@@ -146,6 +146,7 @@
          - RAKE Explained with python Implementation ([Medium](https://medium.com/@bharathwajan/rake-explained-with-python-implementation-95ecaeb6c580))
          - Rapid Keyword Extraction (RAKE) Algorithm in Natural Language Processing ([Analytics Vidhya](https://www.analyticsvidhya.com/blog/2021/10/rapid-keyword-extraction-rake-algorithm-in-natural-language-processing/))
          - Extracting Keyphrases from Text: RAKE and Gensim in Python ([Medium](https://towardsdatascience.com/extracting-keyphrases-from-text-rake-and-gensim-in-python-eefd0fad582f))
+         - [Unsupervised Key Phrases (Topic) Extraction with RAKE | Applied NLP Tutorial in Python](https://www.youtube.com/watch?v=ZOgrhn2Uq0U&ab_channel=1littlecoder)
          - Harnessing the Power of LLMs for Keyword Extraction with RAKE: A Python Sample Guide ([Medium](https://medium.com/@amb39305/harnessing-the-power-of-llms-for-keyword-extraction-with-rake-a-python-sample-guide-a305608bc332))
      - Yake
          - [YAKE Keyword Analysis: A Simplified Guide for NLP Enthusiasts](https://www.markovml.com/blog/yake-keyword-extraction)

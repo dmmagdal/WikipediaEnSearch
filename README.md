@@ -128,6 +128,14 @@ Description: Provides a text based search for Wikipedia (English only)
          - Task can be either CPU or GPU bound.
          - Cannot isolate the size of the vector data per file (both in number of vectors or size in Bytes).
              - Memory resources exhausted (OOM) on my server (has 68 GB) when running the above configuration (16 cores). This has introduced the need to dynamically loading the data into the vector DB (lancedb) during preprocessing (instead of waiting for the full file to be processed) without causing any issues with threading/race conditions.
+     - Secondary preprocessing (bag of words)
+         - It seemed prudent to include a secondary preprocessing step for the data. Theidea was to take the outputs from the bag of words preprocessing step and filter out all non-articles, precompute inverse document frequency for all words, and precompute the TF-IDF and BM25 scores for all words.
+             - Computing the BM25 required that we define a `k1` and `b` in the `config.json` before running this step.
+                 - Chose the following default `k1` and `b` scores based on this [article from ElasticSearch](https://www.elastic.co/blog/practical-bm25-part-3-considerations-for-picking-b-and-k1-in-elasticsearch)
+             - The idea was that we would save on the cost of these computations at inference time given the scale of the data (we could go back to passing in `k1` and `b` to class initialization method if we either have a much smaller dataset or we find ourself with sufficient need and compute power to do this at runtime).
+         - Now we just have to read the document, word TF-IDF or BM25 and compute only the scores.
+             - There are still issues with disk IO being a bottleneck for this part but it does save us memory usage.
+         - This secondary preprocessing also includes building the inverted index.
 
 
 ### Parsing Documents & Queries
@@ -386,6 +394,8 @@ word: [document_1_path, document_2_path, ... , document_n_path]
  - Milvus [documentation](https://milvus.io/docs/insert-update-delete.md)
  - Cosine Similarity
      - Wikipedia [article](https://en.wikipedia.org/wiki/Cosine_similarity)
+ - Zipf's Law
+     - Wikipedia [article](https://en.wikipedia.org/wiki/Zipf%27s_law)
  - TF-IDF
      - Document Similarity Search Examples in Python (LinkedIn [blog post](https://www.linkedin.com/pulse/document-similarity-examples-python-rany-elhousieny-phd%E1%B4%AC%E1%B4%AE%E1%B4%B0-0i5lc/))
      - Understanding TF-IDF [geeksforgeeks](https://www.geeksforgeeks.org/understanding-tf-idf-term-frequency-inverse-document-frequency/)
