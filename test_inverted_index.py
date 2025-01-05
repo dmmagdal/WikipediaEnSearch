@@ -12,7 +12,7 @@ import random
 import time
 from typing import List, Tuple
 
-from search import InvertedIndex, load_data_file
+from search import InvertedIndex, SortedInvertedIndex, load_data_file
 
 
 def test_index(inverted_index: InvertedIndex, samples: List[Tuple[str, int]], num_workers: int = 1) -> None:
@@ -33,7 +33,8 @@ def test_index(inverted_index: InvertedIndex, samples: List[Tuple[str, int]], nu
 		# Search the inverted index and print the performance times as
 		# well as the number of documents returned.
 		start = time.perf_counter()
-		results = inverted_index.query(words, num_workers)
+		# results = inverted_index.query(words, num_workers)	# For InvertedIndex     
+		results = inverted_index.query(words)				# For SortedInvertedIndex
 		end = time.perf_counter()
 		elapsed_ms = round((end - start) * 1_000)
 		print(f"Number of documents returned: {len(results)}")
@@ -74,6 +75,9 @@ def main():
 
 	# Initialize class.
 	inverted_index = InvertedIndex(
+		inverted_index_folder, use_json, args.num_proc > 1
+	)
+	inverted_index = SortedInvertedIndex(
 		inverted_index_folder, use_json, args.num_proc > 1
 	)
 
@@ -126,6 +130,7 @@ def main():
 	del vocab_terms
 	gc.collect()
 
+	# InvertedIndex
 	# num_workers
 	# Threads:
 	# 4
@@ -141,11 +146,21 @@ def main():
 	# - Large sample: 15 minute mean time (1000s or ~20 minutes mean total)
 	# 8 OOM'ed
 	# 16 OOM'ed
+
+	# Sorted Inverted Index
+	# (serial/no parallelization or concurrency)
+	# - Small sample: 4 minute mean time (240s or ~4 minutes mean total)
+	# - Medium sample: 4.75 minute mean time (280s or ~4.5 minutes mean total)
+	# - Large sample: 6.25 minute mean time (380s or ~6 minutes mean total)
 	num_workers = min(mp.cpu_count(), num_proc) if num_proc > 1 else num_thread
 
 	# NOTE:
-	# Performance seems to excel under multiprocessing but we quickly
-	# get OOM with a small number of processors.
+	# Performance for the file-based, simple InvertedIndex seems to 
+	# excel under multiprocessing but we quickly get OOM with a small 
+	# number of processors. However, the performance of the aggregated
+	# document and sorted based SortedInvertedIndex seems to completely
+	# out class the InvertedIndex with only serial execution compared
+	# to the InvertedIndex's optimized execution.
 
 	# Test query times based on size of query.
 	print(f"Testing small query size ({small_size} words)")
