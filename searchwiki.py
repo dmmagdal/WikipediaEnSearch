@@ -29,9 +29,27 @@ def test() -> None:
 
 	bow_dir = "./metadata/bag_of_words"
 	index_dir = "./test-temp"
-	tfidf_corpus_size = config["tf-idf_config"]["corpus_size"]
-	bm25_corpus_size = config["bm25_config"]["corpus_size"]
-	bm25_avg_doc_len = config["bm25_config"]["avg_doc_len"]
+
+	preprocessing_paths = config["preprocessing"]
+	corpus_staging = os.path.join(
+		preprocessing_paths["staging_corpus_path"], 
+		"corpus_cache",
+	)
+	corpus_path = os.path.join(corpus_staging, "corpus_stats.json")
+
+	# Load corpus stats from the corpus path JSON if it exists. Use the
+	# config JSON if the corpus JSON is not available.
+	if os.path.exists(corpus_path):
+		with open(corpus_path, "r") as f:
+			corpus_stats = json.load(f)
+			tfidf_corpus_size = corpus_stats["corpus_size"]
+			bm25_corpus_size = corpus_stats["corpus_size"]
+			bm25_avg_doc_len = corpus_stats["avg_doc_len"]
+	else:
+		tfidf_corpus_size = config["tf-idf_config"]["corpus_size"]
+		bm25_corpus_size = config["bm25_config"]["corpus_size"]
+		bm25_avg_doc_len = config["bm25_config"]["avg_doc_len"]
+
 	model = "bert"
 	device = "cpu"
 	if torch.cuda.is_available():

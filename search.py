@@ -434,18 +434,24 @@ class BagOfWords:
 		'''
 		# Initialize class variables either from arguments or with
 		# default values.
+
+		# File paths.
 		self.bow_dir = bow_dir
-		self.word_to_doc_folder = None
-		self.doc_to_word_folder = None
-		self.word_to_doc_files = None
-		self.doc_to_word_files = None
-		self.idf_files = None
+		self.trie_folder = None
+		self.inverted_index_files = None
+		self.sparse_vector_files = None
 		self.int_to_doc_file = None
 		self.documents_folder = "./WikipediaEnDownload/WikipediaData"
+
+		# Corpus metadata.
 		self.corpus_size = corpus_size	# total number of documents (articles)
 		self.srt = srt					# similarity relative threshold value
+
+		# File path extensions.
 		self.use_json = use_json
 		self.extension = ".json" if use_json else ".msgpack"
+
+		# Additional variables.
 		self.alpha_numerics = string.digits + string.ascii_lowercase
 		self.word_len_limit = 60
 		self.idf_threshold = 1.0
@@ -456,9 +462,8 @@ class BagOfWords:
 		# Verify that the class variables that were initialized as None
 		# by default are no longer None.
 		initialized_variables = [
-			self.word_to_doc_folder, self.doc_to_word_folder,
-			self.word_to_doc_files, self.doc_to_word_files,
-			self.idf_files, self.int_to_doc_file,
+			self.trie_folder, self.inverted_index_files, 
+			self.sparse_vector_files, self.int_to_doc_file,
 		]
 		assert None not in initialized_variables,\
 			"Some variables were not initialized properly"
@@ -472,6 +477,9 @@ class BagOfWords:
 		assert self.corpus_size != 0,\
 			"Could not count the number of documents (articles) in the corpus. Corpus size is 0."
 		
+		# Initialize inverted index object.
+		self.inverted_index_ = SortedInvertedIndex(self.trie_folder, self.use_json)
+
 		# Verify that the srt is either -1.0 or in the range [0.0, 1.0]
 		# (cosine similarity range).
 		srt_off = self.srt == -1.0
@@ -489,67 +497,44 @@ class BagOfWords:
 			mapping to the word-to-document and document-to-word files.
 		@return: returns nothing.
 		'''
-		# Initialize path to word to document and document to word 
-		# folders.
-		self.word_to_doc_folder = os.path.join(bow_dir, 'word_to_docs')
-		self.doc_to_word_folder = os.path.join(bow_dir, 'doc_to_words')
-
-		# Initialize path to word to idf and trie folders (trie folder
-		# contains document id to document mapping as well).
-		self.idf_folder = os.path.join(bow_dir, "idf_cache")
-		self.trie_folder = os.path.join(bow_dir, "trie_cache")
-		self.redirect_folder = os.path.join(bow_dir, "redirect_cache")
-
-		# Verify that the paths exist.
-		assert os.path.exists(self.word_to_doc_folder) and os.path.isdir(self.word_to_doc_folder),\
-			f"Expected path to word to documents folder to exist: {self.word_to_doc_folder}"
-		assert os.path.exists(self.doc_to_word_folder) and os.path.isdir(self.doc_to_word_folder),\
-			f"Expected path to document to words folder to exist: {self.doc_to_word_folder}"
+		# Initialize path to word to inverted index and sparse vectors 
+		# folders (inverted index folder contains document id to 
+		# document mapping as well).
+		self.trie_folder = os.path.join(bow_dir, "tries")
+		self.sparse_vectors_folder = os.path.join(
+			bow_dir, "sparse_vectors"
+		)
 		
-		# Initialize the list of files for each mapping folder.
-		self.word_to_doc_files = [
-			os.path.join(self.word_to_doc_folder, file)
-			for file in os.listdir(self.word_to_doc_folder)
+		# Isolate all files for each folder.
+		self.inverted_index_files = [
+			os.path.join(self.trie_folder, file)
+			for file in os.listdir(self.trie_folder)
 			if file.endswith(self.extension)
 		]
-		self.doc_to_word_files = [
-			os.path.join(self.doc_to_word_folder, file)
-			for file in os.listdir(self.doc_to_word_folder)
-			if file.endswith(self.extension)
+		self.sparse_vector_files = [
+			os.path.join(self.sparse_vectors_folder, file)
+			for file in os.listdir(self.sparse_vectors_folder)
+			if file.endswith(".parquet")
 		]
 
-		# Initialize path to word to idf mappings, trie files, and 
-		# document id to document mappings.
+		# Isolate path for document ID to documents mappings as well as
+		# the inverse.
 		doc_id_map_files = [
 			"doc_to_int" + self.extension,
 			"int_to_doc" + self.extension,
 		]
-		self.idf_files = [
-			os.path.join(self.idf_folder, file)
-			for file in os.listdir(self.idf_folder)
-			if file.endswith(self.extension)
-		]
 		self.int_to_doc_file = os.path.join(
 			self.trie_folder, doc_id_map_files[1]
 		)
-		self.redirect_files = [
-			os.path.join(self.redirect_folder, file)
-			for file in os.listdir(self.redirect_folder)
-			if file.endswith(self.extension)
-		]
 		
 		# Verify that the list of files for each mapping folder is not
 		# empty.
-		assert len(self.word_to_doc_files) != 0,\
-			f"Detected word to documents folder {self.word_to_doc_folder} does have not supported files"
-		assert len(self.word_to_doc_files) != 0,\
-			f"Detected document to words folder {self.doc_to_word_folder} does have not supported files"
-		assert len(self.idf_files) != 0,\
-			f"Detected word to idf folder {self.idf_folder} does have not supported files"
 		assert os.path.exists(self.int_to_doc_file),\
-			f"Required document id to document file in {self.trie_folder} does exist"
-		assert len(self.redirect_files) != 0,\
-			f"Detected redirected documents folder {self.redirect_folder} does have not supported files"
+			f"Required document id to document file (int_to_doc{self.extension}) in {self.trie_folder} does exist"
+		assert len(self.inverted_index_files) != 0,\
+			f"Required inverted index to be initialized in {self.trie_folder}. Found no files."
+		assert len(self.sparse_vector_files) != 0,\
+			f"Required sparse vector data to be initialized in {self.sparse_vectors_folder}. Found no files."
 
 
 	def get_number_of_documents(self) -> int:
@@ -564,11 +549,12 @@ class BagOfWords:
 		# Iterate through each file in the documents to words map 
 		# files.
 		print("Getting the number of documents in the corpus...")
-		for file in tqdm(self.doc_to_word_files):
+		for file in tqdm(self.inverted_index_files):
 			# Load the data from the file and increment the counter by
 			# the number of documents in each file.
-			doc_to_words = load_data_file(file, self.use_json)
-			counter += len(list(doc_to_words.keys()))
+			df = pd.read_parquet(file)
+			documents = df["doc"].unique().tolist()
+			counter += len(documents)
 		
 		# Return the count.
 		return counter
@@ -942,17 +928,39 @@ class BagOfWords:
 		idf_dict = dict()
 
 		# Iterate through each file.
-		for file in self.idf_files:
-			# Load the word to IDF mappings from file.
-			word_to_idf = load_data_file(file, use_json=self.use_json)
+		# for file in self.idf_files:
+		# 	# Load the word to IDF mappings from file.
+		# 	word_to_idf = load_data_file(file, use_json=self.use_json)
 
-			# Iterate through each word and retrieve the IDF value for
-			# that word if it is available.
-			for word_idx in range(len(words)):
-				word = words[word_idx]
-				if word in word_to_idf:
-					idf_vector[word_idx] = word_to_idf[word]
-					idf_dict[word] = word_to_idf[word]
+		# 	# Iterate through each word and retrieve the IDF value for
+		# 	# that word if it is available.
+		# 	for word_idx in range(len(words)):
+		# 		word = words[word_idx]
+		# 		if word in word_to_idf:
+		# 			idf_vector[word_idx] = word_to_idf[word]
+		# 			idf_dict[word] = word_to_idf[word]
+
+		for file in self.sparse_vector_files:
+			df = pd.read_parquet(file)
+
+			# Extract the unique word-IDF pairs.
+			word_idf_map = df[['word', 'idf']].drop_duplicates(subset='word')\
+				.set_index('word')['idf']\
+				.to_dict()
+
+			# Get the IDF values for words in vocab, with default value if a word is not in the DataFrame
+			# idf_values = {word: word_idf_map.get(word, None) for word in words}
+			idf_values = {
+				word: idf 
+				for word in words 
+				if (idf := word_idf_map.get(word)) is not None
+			}
+			idf_dict.update(idf_values)
+
+		idf_vector = [
+			idf_dict[word]
+			for word in words
+		]
 
 		# Return the inverse document frequency vector.
 		return idf_vector if not return_dict else idf_dict
@@ -988,6 +996,56 @@ class TF_IDF(BagOfWords):
 		# Isolate a list of files/documents to look through.
 		words = sorted(words)
 
+		# Query inverted index.
+		document_ids = self.inverted_index_.query(words)
+	
+		# print(json.dumps(document_ids[:10], indent=4))
+		# df = pd.read_parquet(self.sparse_vector_files[0])
+		# print(self.sparse_vector_files[0])
+		# print(df["doc"].head())
+
+		# Organize which sparse vector parquet files are going to be 
+		# queried.
+		files_to_docs = dict()
+		for id in tqdm(document_ids):
+			match = re.search(
+				r"(pages-articles-multistream\d+_[a-f0-9]+\.xml)", id
+			)
+
+			if match:
+				# Isolate xml file basename. Build out the full 
+				# (corresponding) sparse vector file path.
+				xml_basename = match.group(1)
+				sparse_vector_file = os.path.join(
+					self.sparse_vectors_folder, 
+					xml_basename.replace(".xml", ".parquet")
+				)
+
+				# print(xml_basename)
+				# print(sparse_vector_file)
+				# print(sparse_vector_file in self.sparse_vector_files)
+				# exit()
+
+				# Validate sparse vector file and add current document 
+				# ID to that mapping.
+				if sparse_vector_file in self.sparse_vector_files:
+					if sparse_vector_file not in list(files_to_docs.keys()):
+						files_to_docs[sparse_vector_file] = list()
+					
+					files_to_docs[sparse_vector_file].append(id)
+		
+		# Get word IDF for query terms.
+		word_idfs = self.compute_idf(words)
+
+		# Query TF-IDF.
+		query_tfidf = {
+			word: word_freq[word] * word_idfs[idx]
+			for idx, word in enumerate(words)
+		}
+		query_tfidf_vector = create_aligned_tfidf_vector(
+			query_tfidf, words
+		)
+
 		# num_workers used:
 		# 8 -> 
 		# 16 -> 
@@ -1005,16 +1063,19 @@ class TF_IDF(BagOfWords):
 		# class and set it in the config.json.
 
 		num_workers = 8
-		chunk_size = math.ceil(len(self.doc_to_word_files) / num_workers)
+		# chunk_size = math.ceil(len(self.sparse_vector_files) / num_workers)
+		# file_chunks = [
+		# 	self.sparse_vector_files[i:i + chunk_size]
+		# 	for i in range(9, len(self.sparse_vector_files), chunk_size)
+		# ]
+		target_sparse_vector_files = list(files_to_docs.keys())
+		chunk_size = math.ceil(len(target_sparse_vector_files) / num_workers)
 		file_chunks = [
-			self.doc_to_word_files[i:i + chunk_size]
-			for i in range(9, len(self.doc_to_word_files), chunk_size)
+			target_sparse_vector_files[i:i + chunk_size]
+			for i in range(9, len(target_sparse_vector_files), chunk_size)
 		]
-
-		word_idfs = self.compute_idf(words)
-		print("Captured word IDFs")
 		args_list = [
-			(file_chunk, words, word_freq, word_idfs, max_results)
+			(files_to_docs, file_chunk, words, query_tfidf_vector, max_results)
 			for file_chunk in file_chunks
 		]
 		corpus_tfidf = []
@@ -1028,7 +1089,7 @@ class TF_IDF(BagOfWords):
 		# Use with Pandas/all other software.
 		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
 			print("Starting multithreaded processing")
-			results = executor.map(lambda args: self.file_search(*args), args_list)
+			results = executor.map(lambda args: self.targeted_file_search(*args), args_list)
 			
 			for result in results:
 				while len(result) > 0:
@@ -1092,18 +1153,72 @@ class TF_IDF(BagOfWords):
 		return sorted_rankings
 	
 
-	def file_search(self, doc_to_word_files: List[str], words: List[str], word_freq: Dict[str, int], word_idfs: Dict[str, float], max_results: int):
-		basenames = [
-			os.path.basename(file).replace(self.extension, "") 
-			for file in doc_to_word_files
-		]
-		trie_paths = [
-			os.path.join(self.trie_folder, folder) 
-			for folder in os.listdir(self.trie_folder)
-			if os.path.isdir(os.path.join(self.trie_folder, folder)) and folder in basenames
-		]
-		assert len(basenames) == len(trie_paths)
+	def targeted_file_search(self, files_to_docs: Dict[str, List[str]], sparse_vector_files: List[str], words: List[str], query_tfidf_vector: List[float], max_results: int):
+		# Stack heap for the search.
+		stack_heap = list()
+		heapq.heapify(stack_heap)
 
+		for file in tqdm(sparse_vector_files):
+			profiler.enable()
+
+			###########################################################
+			# PANDAS
+			###########################################################
+			# Read in the doc_to_words data into a dataframe.
+			file = file.replace(".msgpack", ".parquet")
+			df_doc2words = pd.read_parquet(file)
+
+			# Filter out all entries that are not within the specified 
+			# document IDs (no need to worry about redirect articles).
+			target_docs = files_to_docs[file]
+			df_doc2words = df_doc2words[df_doc2words["doc"].isin(target_docs)]
+
+			# Filter out all entries without the words from the input 
+			# list.
+			df_doc2words = df_doc2words[df_doc2words["word"].isin(words)]
+
+			# Group tf-idf values by document to get a document level
+			# tf-idf vector.
+			doc_vectors = df_doc2words.groupby("doc")\
+				.apply(lambda group: create_aligned_tfidf_vector(group, words))
+			
+			# Compute the document cosine similarity.
+			results = doc_vectors.reset_index(name="tfidf_vector")
+			results["cosine_similarity"] = results["tfidf_vector"].apply(
+				lambda vec: cosine_similarity(vec, query_tfidf_vector)
+			)
+
+			# Grab the top n results and store it to a heap.
+			top_n = results.nlargest(max_results, "cosine_similarity")
+			top_n_list = []
+			for _, row in top_n.iterrows():
+				top_n_list.append((-row["cosine_similarity"], row["doc"]))
+
+			for doc_cos_score, doc in top_n_list:
+				# Insert the document name (includes file path & 
+				# article SHA1), TF-IDF vector, and cosine similarity 
+				# score (against the query TF-IDF vector) to the heapq.
+				# The heapq sorts by the first value in the tuple so 
+				# that is why the cosine similarity score is the first
+				# item in the tuple.
+				if max_results != -1 and len(stack_heap) >= max_results:
+					# Pushpop the highest (cosine similarity) value
+					# tuple from the heap to make way for the next
+					# tuple.
+					heapq.heappushpop(stack_heap, [doc_cos_score, doc])
+				else:
+					# Push the highest (cosine similarity) value tuple 
+					# from the heap to make way for the next tuple.
+					heapq.heappush(stack_heap, [doc_cos_score, doc])
+
+			profiler.disable()
+			profiler.print_stats(sort="time")
+
+		print(f"thread stack heap length: {len(stack_heap)}")
+		return stack_heap
+	
+
+	def file_search(self, doc_to_word_files: List[str], words: List[str], word_freq: Dict[str, int], word_idfs: Dict[str, float], max_results: int):
 		# Stack heap for the search.
 		stack_heap = list()
 		heapq.heapify(stack_heap)
