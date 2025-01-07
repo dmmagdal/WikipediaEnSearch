@@ -146,6 +146,7 @@ def test() -> None:
 
 			# Append the search time to a list.
 			search_times.append(query_search_elapsed)
+			exit()
 
 		# Compute and print the average search time.
 		avg_search_time = sum(search_times) / len(search_times)

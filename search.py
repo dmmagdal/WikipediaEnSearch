@@ -39,6 +39,10 @@ from generate_trie import load_trie
 
 profiler = cProfile.Profile()
 
+# Required to initialize models on GPU for multiprocessing. Placed
+# here due to recommendation from official python documentation.
+mp.set_start_method("spawn", force=True)
+
 
 def hashSum(data: str) -> str:
 	'''
@@ -186,7 +190,8 @@ def create_aligned_tfidf_vector(group: pd.DataFrame | Dict[str, float], words: L
 	'''
 	if isinstance(group, pd.DataFrame):
 		# Create a dictionary for quick lookup.
-		tfidf_dict = dict(zip(group["word"], group["tf-idf"]))
+		# tfidf_dict = dict(zip(group["word"], group["tf-idf"]))
+		tfidf_dict = dict(zip(group["word"], group["tf_idf"]))
 	else:
 		tfidf_dict = group
 
@@ -366,15 +371,24 @@ class SortedInvertedIndex(InvertedIndex):
 		# IDs.
 		docs_set = set()
 
+		# Deep copy the words argument (passed by reference) to allow 
+		# for local modification.
+		word_list = copy.deepcopy(words)
+
+		# Initialize a list/set to keep track of words found so 
+		# far.
+		found_words = set([])
+
 		# Iterate through the inverted index files.
 		for file in tqdm(self.index_files):
 			# Skip remaining files if the query words list is empty.
-			if len(words) == 0:
+			if len(word_list) == 0:
 				continue
 
 			# Initialize a list/set to keep track of words found so 
 			# far.
-			found_words = set()
+			# found_words = set([])
+			# assert found_words is not None
 
 			with open(file, "rb") as f:
 				# Memory-map the file.
@@ -390,7 +404,7 @@ class SortedInvertedIndex(InvertedIndex):
 				
 				# Iterate through all query words and search for each
 				# key/value pair for the file.
-				for word in words:
+				for word in word_list:
 					if word in list(data.keys()):
 						docs_set.update(data[word])
 						found_words.add(word)
@@ -399,11 +413,11 @@ class SortedInvertedIndex(InvertedIndex):
 				mm.close()
 
 			# Remove found words from the query list.
-			for word in found_words:
-				words.remove(word)
+			for word in found_words.intersection(word_list):
+				word_list.remove(word)
 
 			# Memory cleanup.
-			del found_words
+			# del found_words
 			gc.collect()
 		
 		# Return the decoded document IDs list (as document paths).
@@ -941,6 +955,9 @@ class BagOfWords:
 		# 			idf_dict[word] = word_to_idf[word]
 
 		for file in self.sparse_vector_files:
+			if all(word in (idf_dict.keys()) for word in words):
+				continue
+
 			df = pd.read_parquet(file)
 
 			# Extract the unique word-IDF pairs.
@@ -1066,13 +1083,13 @@ class TF_IDF(BagOfWords):
 		# chunk_size = math.ceil(len(self.sparse_vector_files) / num_workers)
 		# file_chunks = [
 		# 	self.sparse_vector_files[i:i + chunk_size]
-		# 	for i in range(9, len(self.sparse_vector_files), chunk_size)
+		# 	for i in range(0, len(self.sparse_vector_files), chunk_size)
 		# ]
 		target_sparse_vector_files = list(files_to_docs.keys())
 		chunk_size = math.ceil(len(target_sparse_vector_files) / num_workers)
 		file_chunks = [
 			target_sparse_vector_files[i:i + chunk_size]
-			for i in range(9, len(target_sparse_vector_files), chunk_size)
+			for i in range(0, len(target_sparse_vector_files), chunk_size)
 		]
 		args_list = [
 			(files_to_docs, file_chunk, words, query_tfidf_vector, max_results)
@@ -1083,8 +1100,28 @@ class TF_IDF(BagOfWords):
 		# Snippet. Polars does not play well with multithreading from
 		# python because it is already multithreading under the hood in
 		# rust.
-		# corpus_tfidf = self.file_search(*args_list[0])
-		# exit()
+
+		# TODO:
+		# - Copy adjustments over to BM25 class.
+		# - Find a way to speed up the entire search process. Search 
+		# should be running under 10 minutes (idealy).
+
+		# NOTE:
+		# General performances:
+		# INVERTED INDEX (SORTED)
+		# - Between 4 to 5 minutes
+		# ORGANIZE RETRIEVED DOCUMENTS
+		# - Between 1 to 2.5 minutes
+		# SPARSE VECTOR AGGREGATION & SORTING
+		# Single thread/process:
+		# - Runs in about 1.5 hours (~30s/item)
+		# Multi thread:
+		# - 4 threds runs in about 1 hour (~75s/item)
+		# - 8 threads runs in about 1 hour (~150s/item)
+		# - 16 threads runs in about 1 hour (~300s/item)
+		# - 32 threads crashed program on server
+		# Multi process:
+		# - 4 processors OOM'ed on server
 		
 		# Use with Pandas/all other software.
 		with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
@@ -1110,11 +1147,29 @@ class TF_IDF(BagOfWords):
 							result_item
 						)
 
-		# target_documents = self.get_documents_from_trie(words)
-		# # target_documents = self.inverted_index(words, "word_idf_filter")
-		# print("Isolated documents from tries.")
-		# print(json.dumps(target_documents[:10], indent=4))
-		# print(len(target_documents))
+		# with mp.Pool(num_workers) as pool:
+		# 	print("Starting multiprocessing processing")
+		# 	results = pool.starmap(self.targeted_file_search, args_list)
+			
+		# 	for result in results:
+		# 		while len(result) > 0:
+		# 			result_item = result.pop()
+		# 			if result_item in corpus_tfidf:
+		# 				continue
+
+		# 			if max_results != -1 and len(corpus_tfidf) >= max_results:
+		# 				# Pushpop the highest (cosine similarity) value
+		# 				# tuple from the heap to make way for the next
+		# 				# tuple.
+		# 				heapq.heappushpop(
+		# 					corpus_tfidf,
+		# 					result_item
+		# 				)
+		# 			else:
+		# 				heapq.heappush(
+		# 					corpus_tfidf,
+		# 					result_item
+		# 				)
 
 		# # Compute the TF-IDF for the corpus.
 		# # _, corpus_tfidf = self.compute_tfidf(
@@ -1159,7 +1214,7 @@ class TF_IDF(BagOfWords):
 		heapq.heapify(stack_heap)
 
 		for file in tqdm(sparse_vector_files):
-			profiler.enable()
+			# profiler.enable()
 
 			###########################################################
 			# PANDAS
@@ -1167,15 +1222,29 @@ class TF_IDF(BagOfWords):
 			# Read in the doc_to_words data into a dataframe.
 			file = file.replace(".msgpack", ".parquet")
 			df_doc2words = pd.read_parquet(file)
+			target_docs = files_to_docs[file]
 
 			# Filter out all entries that are not within the specified 
 			# document IDs (no need to worry about redirect articles).
-			target_docs = files_to_docs[file]
-			df_doc2words = df_doc2words[df_doc2words["doc"].isin(target_docs)]
+			# df_doc2words = df_doc2words[df_doc2words["doc"].isin(target_docs)]
 
 			# Filter out all entries without the words from the input 
 			# list.
-			df_doc2words = df_doc2words[df_doc2words["word"].isin(words)]
+			# df_doc2words = df_doc2words[df_doc2words["word"].isin(words)]
+
+			# Convert doc and word entries to str (they're currently 
+			# stored as object dtypes).
+			# df_doc2words["doc"] = df_doc2words["doc"].astype(str)
+			# df_doc2words["word"] = df_doc2words["word"].astype(str)
+			df_doc2words["doc"] = df_doc2words["doc"].apply(str)
+			df_doc2words["word"] = df_doc2words["word"].apply(str)
+
+			# Isolate entries where the document IDs are within the set
+			# of target documents and the words for those documents and
+			# within the set of target words.
+			df_doc2words = df_doc2words[
+				df_doc2words["word"].isin(words) & df_doc2words["doc"].isin(target_docs)
+			]
 
 			# Group tf-idf values by document to get a document level
 			# tf-idf vector.
@@ -1211,8 +1280,8 @@ class TF_IDF(BagOfWords):
 					# from the heap to make way for the next tuple.
 					heapq.heappush(stack_heap, [doc_cos_score, doc])
 
-			profiler.disable()
-			profiler.print_stats(sort="time")
+			# profiler.disable()
+			# profiler.print_stats(sort="time")
 
 		print(f"thread stack heap length: {len(stack_heap)}")
 		return stack_heap
