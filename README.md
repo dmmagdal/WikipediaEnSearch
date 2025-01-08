@@ -13,8 +13,9 @@ Description: Provides a text based search for Wikipedia (English only)
      - Copy over work implemented in TF-IDF class over to BM25.
      - Rust rewrite?
          - Use polars instead of pandas
-     - Re-validate stage 1 (sparse vector) performance and accuracy
-     - Build out stage 2 (dense vector) and validate it's performance and accuracy
+     - Re-validate stage 1 (sparse vector) performance and accuracy.
+     - Build out stage 2 (dense vector) and validate it's performance and accuracy.
+     - Comprehensive `setup.py` script for python.
 
 
 ### Before Proceeding
