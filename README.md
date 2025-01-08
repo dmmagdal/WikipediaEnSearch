@@ -3,6 +3,20 @@
 Description: Provides a text based search for Wikipedia (English only)
 
 
+### PROJECT STATUS
+
+ - Project is currently on hold due to the current runtime performance of the search engine hitting the limits of my hardware (and thus the scope of the project).
+     - The sparse vector stage (TF-IDF/BM25) is taking around an hour, even with multiprocessing and multithreading. I'm also reaching the limits of my hardware (server) with those techniques. 
+     - Ideally the whole system should take no more than 10 minutes per query but we are far from that at the moment.
+     - Considering a larger rewrite in Rust to allow for speedup and/or use of a database (ie sqlite) over parquet files to get around fileIO latency.
+ - TODO
+     - Copy over work implemented in TF-IDF class over to BM25.
+     - Rust rewrite?
+         - Use polars instead of pandas
+     - Re-validate stage 1 (sparse vector) performance and accuracy
+     - Build out stage 2 (dense vector) and validate it's performance and accuracy
+
+
 ### Before Proceeding
 
  - This project was intended to be possible to replicate and run on a consumer level PC
@@ -350,6 +364,7 @@ word: [document_1_path, document_2_path, ... , document_n_path]
      - [argparse](https://docs.python.org/3.9/library/argparse.html)
      - [concurrent.futures](https://docs.python.org/3.9/library/concurrent.futures.html)
      - [copy](https://docs.python.org/3.9/library/copy.html)
+     - [cProfiler](https://docs.python.org/3.11/library/profile.html)
      - [gc](https://docs.python.org/3.9/library/gc.html)
      - [json](https://docs.python.org/3.9/library/json.html)
      - [math](https://docs.python.org/3.9/library/math.html)

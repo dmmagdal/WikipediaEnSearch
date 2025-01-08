@@ -184,6 +184,12 @@
  - [Rust Keyword Extraction: Creating the YAKE! algorithm from scratch](https://dev.to/tugascript/rust-keyword-extraction-creating-the-yake-algorithm-from-scratch-4n2l)
 
 
+### B-Trees
+
+ - Introduction of B-Tree ([geeksforgeeks](https://www.geeksforgeeks.org/introduction-of-b-tree-2/))
+ - B-Tree ([wikipedia](https://en.wikipedia.org/wiki/B-tree))
+
+
 ### NLP Frameworks/Libraries in Other Languages
 
  - C++
